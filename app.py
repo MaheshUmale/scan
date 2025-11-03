@@ -37,7 +37,14 @@ class AppState:
 
     def get_all_fired_events(self):
         df = load_scan_results()
-        df_cleaned = df.drop_duplicates(subset=['fired_timestamp', 'name'], keep='first')
+        # The upsert logic in scan.py should prevent most duplicates, but this is a safeguard.
+        df_cleaned = df.drop_duplicates(subset=['name', 'fired_timestamp'], keep='last')
+
+        # Sort by the original fired timestamp to show the most recent events first.
+        if 'fired_timestamp' in df_cleaned.columns and not df_cleaned.empty:
+            df_cleaned['fired_timestamp'] = pd.to_datetime(df_cleaned['fired_timestamp'])
+            return df_cleaned.sort_values(by='fired_timestamp', ascending=False)
+
         return df_cleaned
 
 

@@ -196,14 +196,17 @@
             // Determine ticker/name for display
             const ticker = d.ticker ? d.ticker.replace('NSE:', '') : d.name ? d.name.replace('NSE:', '') : 'N/A';
             
+            // Ensure Breakout_TFs is always treated as a string
+            const breakoutTFs = Array.isArray(d.Breakout_TFs) ? d.Breakout_TFs.join(', ') : d.Breakout_TFs;
+
             if (type === 'in_squeeze') {
                 const strengthHtml = d.squeeze_strength !== 'N/A' ? ` (${d.squeeze_strength})` : '';
-                squeezeHtml = `Squeeze on ${d.count} TFs (${d.Breakout_TFs})${strengthHtml}<br/>`;
+                squeezeHtml = `Squeeze on ${d.count} TFs (${breakoutTFs})${strengthHtml}<br/>`;
             } else if (type === 'fired') {
                 const prevVol = d.previous_volatility ? d.previous_volatility.toFixed(2) : 'N/A';
                 const currVol = d.current_volatility ? d.current_volatility.toFixed(2) : 'N/A';
                 const countText = d.count > 1 ? `on ${d.count} TFs` : '';
-                squeezeHtml = `Fired ${countText} (Highest: ${d.Breakout_TFs})<br/>` +
+                squeezeHtml = `Fired ${countText} (Highest: ${breakoutTFs})<br/>` +
                               `Volatility: <strong style="color: #10b981;">${prevVol} &rarr; ${currVol}</strong><br/>`;
             } else if (type === 'all_fired') {
                 const countText = d.count > 1 ? `on ${d.count} TFs` : '';
@@ -250,7 +253,10 @@
             if (data.length > 0) firedContainer.html("");
 
             const tfOrder = ['Monthly', 'Weekly', '4H', '2H', '1H', '30m', '15m', '5m', '1m', 'Daily', 'Unknown'];
-            const groupedData = d3.group(data, d => d.Breakout_TFs);
+
+            // Handle cases where Breakout_TFs can be an array
+            const groupedData = d3.group(data, d => Array.isArray(d.Breakout_TFs) ? d.Breakout_TFs.join(', ') : d.Breakout_TFs);
+
             const sortedGroups = Array.from(groupedData.entries()).sort((a, b) => tfOrder.indexOf(a[0]) - tfOrder.indexOf(b[0]));
 
             const groups = firedContainer.selectAll('.timeframe-box').data(sortedGroups, d => d[0]);
