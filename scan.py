@@ -1,3 +1,4 @@
+
 from tradingview_screener import Query, col, And, Or
 import pandas as pd
 
@@ -50,25 +51,36 @@ def run_intraday_scan(settings, cookies):
     # for tf in timeframes:
     donchian_break = [Or(
         col(f'DonchCh20.Upper{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
-        col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}')
+        col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}'), 
+        col(f'close{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
+        col(f'close{tf}') < col(f'DonchCh20.Lower[1]{tf}')
     ) for tf in timeframes]
 
     squeeze_breakout = [Or(
         And(
             col(f'BB.upper[1]{tf}') < col(f'KltChnl.upper[1]{tf}'),
-            col(f'BB.upper{tf}') >= col(f'KltChnl.upper{tf}')
+           Or( col(f'BB.upper{tf}') >= col(f'KltChnl.upper{tf}'),
+              col(f'close{tf}') > col(f'BB.upper{tf}'),
+              col(f'close{tf}') > col(f'KltChnl.upper{tf}')
+           )
         ),
         And(
             col(f'BB.lower[1]{tf}') > col(f'KltChnl.lower[1]{tf}'),
-            col(f'BB.lower{tf}') <= col(f'KltChnl.lower{tf}')
-        )
+            Or(col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),
+            
+            col(f'close{tf}') < col(f'BB.lower{tf}'),
+            col(f'close{tf}') < col(f'KltChnl.lower{tf}')
+            ),
+        ),
+         
+        
     )for tf in timeframes]
 
     vol_spike = [And(
         col(f'volume{tf}') > VOLUME_THRESHOLDS.get(tf,50000),
-        Or (col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), 2),
-            col(f'relative_volume_10d_calc{tf}') > 2,
-            col('relative_volume_intraday|5') >2
+        Or (col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), 1.5),
+            col(f'relative_volume_10d_calc{tf}') > 1.5,
+            col('relative_volume_intraday|5') >1.5
             ),
         
     )for tf in timeframes]
@@ -125,8 +137,8 @@ def run_intraday_scan(settings, cookies):
         print(f"===========NO NEW BREAKOUT =================================")
     
         return {"fired": pd.DataFrame()}
-    else :
-        print(f"==================> NEW BREAKOUT HAPPENING ----------------------------->    df_New size: {len(df_New)}")
+    # else :
+    #     print(f"==================> NEW BREAKOUT HAPPENING ----------------------------->    df_New size: {len(df_New)}")
     
         
     df_New['fired_timestamp'] = pd.Timestamp.now()
@@ -246,7 +258,7 @@ def load_scan_results() -> pd.DataFrame:
     if '_id' in df.columns:
         df = df.drop(columns=['_id'])
     
-    print(f"===============================================================================Loaded {len(df)} records from MongoDB.")
+    # print(f"===============================================================================Loaded {len(df)} records from MongoDB.")
     return df
     
  

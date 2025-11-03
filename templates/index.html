@@ -64,7 +64,7 @@
 
             <div id="all-fired-section-wrapper" class="mb-8">
                 <h2 id="all-fired-title" class="section-title collapsed"><span class="arrow">&#9662;</span>All Fired Today</h2>
-                <div id="all-fired-container" style="display: none;" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-1 gap-6">
+                <div id="all-fired-container" style="display: none;" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                     <p class='col-span-full text-gray-400 text-center py-4' id="all-fired-status">Loading all fired events...</p>
                 </div>
             </div>
@@ -145,37 +145,64 @@
         const neutralColor = d3.scaleLinear().domain(rvolDomain).range(["#374151", "#6b7280"]).clamp(true);
 
         function formatTimeAgo(timestamp) {
-            return timeAgo(timestamp);
+            console.log("Received timestamp:", timestamp);
+            ago = timeAgo(timestamp);
+            console.log("ago timestamp:", ago);
+            return ago;
         }
 
     /**
      * Converts an ISO 8601 timestamp string into a human-readable relative time string.
      */
-    function timeAgo(dateString) {
+ function timeAgo(dateString) {
         if (!dateString) return 'N/A';
         try {
             const date = new Date(dateString); 
             const now = new Date();
-            const seconds = Math.floor((now - date) / 1000);
+            console.log("dateString :",dateString)
+ 
+            const seconds = Math.floor((now  - date) / 1000);
 
-            let interval = Math.floor(seconds / 31536000);
-            if (interval >= 1) return interval + "y ago";
 
-            interval = Math.floor(seconds / 2592000);
-            if (interval >= 1) return interval + "mo ago";
+            // Calculate minutes elapsed (positive for past, negative for future)
+            // const diffMs = now - date; 
+            const minutesElapsed = Math.floor(seconds / 60);
+            console.log("minutesElapsed :",minutesElapsed)
 
-            interval = Math.floor(seconds / 86400);
-            if (interval >= 1) return interval + "d ago";
+            // Logic to assign to fixed time buckets based on minutesElapsed
+            if (minutesElapsed <= 5) return '5m ago';
+            
+            if (minutesElapsed <= 15) return '15 min ago';
+            if (minutesElapsed <= 30) return '30 min ago';
+            
+            // 60 minutes = 1 hour
+            if (minutesElapsed <= 60) return '1 hr ago'; 
+            
+            // 120 minutes = 2 hours
+            if (minutesElapsed <= 120) return '2 hr ago';
 
-            interval = Math.floor(seconds / 3600);
-            if (interval >= 1) return interval + "h ago";
+             // 120 minutes = 2 hours
+            if (minutesElapsed <= 180) return '3 hr ago';
 
-            interval = Math.floor(seconds / 60);
-            if (interval >= 1) return interval + "m ago";
+             // 120 minutes = 2 hours
+            if (minutesElapsed <= 240) return '4 hr ago';
 
-            if (seconds > 0) return Math.floor(seconds) + "s ago";
+             // 120 minutes = 2 hours
+            if (minutesElapsed <= 300) return '5 hr ago';
 
-            return "Just now";
+             // 120 minutes = 2 hours
+            if (minutesElapsed <= 360) return '6 hr ago';
+
+             // 120 minutes = 2 hours
+            if (minutesElapsed <= 420) return '7 hr ago';
+
+
+            // Anything older than 2 hours (120 minutes)
+            return Math.floor(minutesElapsed / 60) + ' hr ago';
+            
+            //t(minutesElapsed/60) ht ago';
+            return 'Other'; 
+
         } catch (e) {
             console.error("Error calculating timeAgo for:", dateString, e);
             return 'Invalid Time';
@@ -188,6 +215,16 @@
             if (d.momentum === 'Bearish') return bearishColor(d.relative_volume_10d_calc);
             return neutralColor(d.relative_volume_10d_calc);
         }
+function formatTime(dateString) {
+  const date = new Date(dateString);
+// const date = new Date(dateString);
+
+// toTimeString() returns something like "12:44:51 GMT+0000 (UTC)"
+// We slice the first 8 characters to get "12:44:51"
+const formattedTime = date.toTimeString().slice(0, 8);
+  // Combine into hh:mm:ss format
+  return formattedTime ;
+}
 
         function getTooltipHtml(d, type) {
             const momentumHtml = `Momentum: <span style="color: ${getCellColor(d)};">${d.momentum}</span><br/>`;
@@ -210,12 +247,40 @@
                               `Volatility: <strong style="color: #10b981;">${prevVol} &rarr; ${currVol}</strong><br/>`;
             } else if (type === 'all_fired') {
                 const countText = d.count > 1 ? `on ${d.count} TFs` : '';
-                squeezeHtml = `Fired ${countText} (TF: ${d.fired_timeframe})<br/>` +
-                              `Time: ${formatTimeAgo(d.fired_timestamp)}<br/>`;
+                squeezeHtml = `Fired ${countText} (TF: ${formatTime(d.fired_timestamp)})<br/>` +
+                              `Time: ${formatTimeAgo(d.fired_timestamp)}<br/>` + 
+                              `Timestamp: ${d.fired_timestamp}<br/>`; // Added full timestamp here
             }
             
             return `<strong>${ticker}</strong><br/>` + squeezeHtml + momentumHtml + `RVOL: ${d.relative_volume_10d_calc.toFixed(2)}`;
         }
+        // function getTooltipHtml(d, type) {
+        //     const momentumHtml = `Momentum: <span style="color: ${getCellColor(d)};">${d.momentum}</span><br/>`;
+        //     let squeezeHtml = '';
+            
+        //     // Determine ticker/name for display
+        //     const ticker = d.ticker ? d.ticker.replace('NSE:', '') : d.name ? d.name.replace('NSE:', '') : 'N/A';
+            
+        //     // Ensure Breakout_TFs is always treated as a string
+        //     const breakoutTFs = Array.isArray(d.Breakout_TFs) ? d.Breakout_TFs.join(', ') : d.Breakout_TFs;
+
+        //     if (type === 'in_squeeze') {
+        //         const strengthHtml = d.squeeze_strength !== 'N/A' ? ` (${d.squeeze_strength})` : '';
+        //         squeezeHtml = `Squeeze on ${d.count} TFs (${breakoutTFs})${strengthHtml}<br/>`;
+        //     } else if (type === 'fired') {
+        //         const prevVol = d.previous_volatility ? d.previous_volatility.toFixed(2) : 'N/A';
+        //         const currVol = d.current_volatility ? d.current_volatility.toFixed(2) : 'N/A';
+        //         const countText = d.count > 1 ? `on ${d.count} TFs` : '';
+        //         squeezeHtml = `Fired ${countText} (Highest: ${breakoutTFs})<br/>` +
+        //                       `Volatility: <strong style="color: #10b981;">${prevVol} &rarr; ${currVol}</strong><br/>`;
+        //     } else if (type === 'all_fired') {
+        //         const countText = d.count > 1 ? `on ${d.count} TFs` : '';
+        //         squeezeHtml = `Fired ${countText} (TF: ${d.fired_timeframe})<br/>` +
+        //                       `Time: ${formatTimeAgo(d.fired_timestamp)}<br/>`;
+        //     }
+            
+        //     return `<strong>${ticker}</strong><br/>` + squeezeHtml + momentumHtml + `RVOL: ${d.relative_volume_10d_calc.toFixed(2)}`;
+        // }
 
         function renderCells(selection, type) {
             const enterCells = selection.enter().append("div").attr("class", "cell")
@@ -281,18 +346,12 @@
          * Groups fired events based on time elapsed since fired_timestamp.
          */
         function getTimeSinceFiredGroup(timestamp) {
-            if (!timestamp) return 'Other';
-            const firedDate = new Date(timestamp);
-            const now = new Date();
-            const minutesElapsed = Math.floor((now - firedDate) / (1000 * 60));
-
-            if (minutesElapsed <= 5) return 'Last 5 min';
-            if (minutesElapsed <= 15) return 'Last 15 min';
-            if (minutesElapsed <= 30) return 'Last 30 min';
-            if (minutesElapsed <= 60) return 'Last 1 hr';
-            if (minutesElapsed <= 120) return 'Last 2 hr';
-            return 'Other';
+            if (timestamp) {
+            return  timeAgo(timestamp);
         }
+        return 'other';
+        }
+
 
         /**
          * Renders all fired events using the grid structure and time-based grouping.

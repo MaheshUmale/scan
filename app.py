@@ -38,7 +38,7 @@ class AppState:
     def get_all_fired_events(self):
         df = load_scan_results()
         # The upsert logic in scan.py should prevent most duplicates, but this is a safeguard.
-        df_cleaned = df.drop_duplicates(subset=['name', 'fired_timestamp'], keep='last')
+        df_cleaned = df.drop_duplicates(subset=['name', 'fired_timestamp'], keep='first')
 
         # Sort by the original fired timestamp to show the most recent events first.
         if 'fired_timestamp' in df_cleaned.columns and not df_cleaned.empty:
@@ -72,13 +72,95 @@ def get_latest_data():
 
 data_lock = threading.Lock()
 
+
+
+
+ # The pandas Timestamp type is used when a column has a datetime dtype
+from pandas import Timestamp
+from datetime import datetime
+from math import floor
+import pandas as pd
+
+# 1. Define the time_ago function (as before)
+def time_ago(date_string):
+    """
+    Converts a date string into a fixed "time ago" bucket.
+    """
+    if not date_string:
+        return 'N/A'
+ 
+    # print(date_string)
+    # print(type(date_string) )
+    try:
+        # if isinstance(date_string, (datetime, Timestamp)):
+        #     date_time = date_string
+        # else :
+        #     date_time = datetime.fromisoformat(date_string)
+        now = datetime.now()
+        # print("========================================================")
+        # print(now)
+        # print(date_string)
+        time_difference = now - date_string
+        minutes_difference = floor(time_difference.total_seconds() / 60)
+        minutes_difference = abs(minutes_difference)
+        # print("========================================================")
+        # print(minutes_difference)
+
+        # Logic to assign to fixed time buckets
+        if minutes_difference <= 5: 
+            return '5m ago'
+        if minutes_difference <= 15: 
+            return '15m ago'
+        if minutes_difference <= 30: 
+            return '30m ago'
+        if minutes_difference <= 60: 
+            return '1 hr ago' 
+        if minutes_difference <= 120: 
+            return '2 hr ago'
+        if minutes_difference <= 180: 
+            return '3 hr ago'
+        if minutes_difference <= 240: 
+            return '4 hr ago'
+        if minutes_difference <= 300: 
+            return '5 hr ago'
+        if minutes_difference <= 360: 
+            return '6 hr ago'
+
+        hours_difference = floor(minutes_difference / 60)
+        return f'{hours_difference} hr ago'
+        
+    except Exception:
+        #print stacktrace
+        import traceback
+        traceback.print_exc()
+        
+        return 'Invalid Time'
+
+
+ 
+import pandas as pd
+import json
 @app.route('/get_all_fired_events', methods=['GET'])
 def get_all_fired_events():
     """Returns all fired squeeze events for the current day."""
     with data_lock:
-        response_data = app_state.get_all_fired_events()
-    # return jsonify(response_data)
-    return jsonify(response_data.to_dict(orient='records'))
+        df = app_state.get_all_fired_events()
+        df['time_ago_group'] = df['fired_timestamp'].apply(time_ago) 
+        
+        # 1. Sort values by the group and name (optional, but ensures consistent removal)
+        df_sorted = df.sort_values(['time_ago_group', 'name'])
+
+        # 2. Use drop_duplicates()
+        #    We keep the first occurrence where the combination of 'time_ago_group' AND 'name' is the same.
+        #    The result keeps all original columns but removes the second 'Alice' entry.
+        filtered_df = df_sorted.drop_duplicates(subset=['time_ago_group', 'name'], keep='first')
+
+
+
+        # Use the built-in pandas method to handle all data types and formatting correctly:
+        json_output = filtered_df.to_json(orient='records', indent=4, date_format='iso') 
+        return json_output
+
 
 
 @app.route('/update_settings', methods=['POST'])
@@ -122,4 +204,4 @@ if __name__ == "__main__":
 
     scanner_thread = threading.Thread(target=background_scanner, daemon=True)
     scanner_thread.start()
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=False , use_reloader=False)
