@@ -155,60 +155,62 @@ import pandas as pd
 
 def identify_combined_breakout_timeframes(df: pd.DataFrame, timeframes: list) -> pd.DataFrame:
     """
-    Adds a new string column 'Breakout_TFs' to the DataFrame, listing the timeframes 
-    where Donchian Break OR Squeeze Breakout conditions are true.
+    Adds 'Breakout_TFs' and 'breakout_type' columns to the DataFrame.
+    - 'Breakout_TFs': Lists timeframes where a Donchian or Squeeze Breakout occurs.
+    - 'breakout_type': Identifies the type of breakout (Squeeze, Donchian, or Both).
     """
-    
-    # 1. Dictionary to store the Boolean Series for the combined condition (Donchian OR Squeeze)
-    combined_breakout_indicators = {}
-   
-      
-    if df is not None and not df.empty:
-        
-        for tf in timeframes:
-            # --- Donchian Break Condition ---
-            # Donchian Break: Upper band expands OR Lower band expands
-            donchian_break = (
-                (df[f'DonchCh20.Upper{tf}'] > df[f'DonchCh20.Upper[1]{tf}']) |  # Upper moves up
-                (df[f'DonchCh20.Lower{tf}'] < df[f'DonchCh20.Lower[1]{tf}'])   # OR Lower moves down
-            )
-            
-            # --- Squeeze Breakout Condition ---
-            # Upper Breakout
-            upper_breakout = (
-                (df[f'BB.upper[1]{tf}'] < df[f'KltChnl.upper[1]{tf}']) &
-                (df[f'BB.upper{tf}'] >= df[f'KltChnl.upper{tf}'])
-            )
-            # Lower Breakout
-            lower_breakout = (
-                (df[f'BB.lower[1]{tf}'] > df[f'KltChnl.lower[1]{tf}']) &
-                (df[f'BB.lower{tf}'] <= df[f'KltChnl.lower{tf}'])
-            )
-            squeeze_breakout = upper_breakout | lower_breakout
-            
-            # 🚨 NEW: Combined Condition (Donchian Break OR Squeeze Breakout) 🚨
-            # If EITHER condition is true, the timeframe is noted.
-            final_combined_condition = donchian_break | squeeze_breakout
-            
-            # Store the resulting Boolean Series in the dictionary
-            combined_breakout_indicators[tf] = final_combined_condition
-
-        # 2. Convert the dictionary of Boolean Series into a single DataFrame
-        # Each column is a timeframe, and the values are True/False for the combined condition.
-        indicators_df = pd.DataFrame(combined_breakout_indicators, index=df.index)
-
-        # 3. Create the final string column using row-wise application
-        # Creates a comma-separated string of all timeframes where the condition is True.
-        df['Breakout_TFs'] = indicators_df.apply(
-            lambda row: ','.join([tf for tf in timeframes if row[tf]]), 
-            axis=1  # Apply function across columns for each row
-        )
-        
-        return df
-    else:
+    if df is None or df.empty:
         print("No data to process.")
-        print("Returning empty DataFrame.   ------------------------------------------------------>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
         return pd.DataFrame()
+
+    squeeze_indicators = {}
+    donchian_indicators = {}
+
+    for tf in timeframes:
+        # --- Squeeze Breakout Condition ---
+        upper_breakout = (
+            (df[f'BB.upper[1]{tf}'] < df[f'KltChnl.upper[1]{tf}']) &
+            (df[f'BB.upper{tf}'] >= df[f'KltChnl.upper{tf}'])
+        )
+        lower_breakout = (
+            (df[f'BB.lower[1]{tf}'] > df[f'KltChnl.lower[1]{tf}']) &
+            (df[f'BB.lower{tf}'] <= df[f'KltChnl.lower{tf}'])
+        )
+        squeeze_indicators[tf] = upper_breakout | lower_breakout
+
+        # --- Donchian Break Condition ---
+        donchian_indicators[tf] = (
+            (df[f'DonchCh20.Upper{tf}'] > df[f'DonchCh20.Upper[1]{tf}']) |
+            (df[f'DonchCh20.Lower{tf}'] < df[f'DonchCh20.Lower[1]{tf}'])
+        )
+
+    squeeze_df = pd.DataFrame(squeeze_indicators, index=df.index)
+    donchian_df = pd.DataFrame(donchian_indicators, index=df.index)
+
+    # Combined condition for any breakout
+    combined_df = squeeze_df | donchian_df
+
+    # --- Determine Breakout Type ---
+    def get_breakout_type(row):
+        is_squeeze = any(squeeze_df.loc[row.name])
+        is_donchian = any(donchian_df.loc[row.name])
+        if is_squeeze and is_donchian:
+            return 'Both'
+        elif is_squeeze:
+            return 'Squeeze'
+        elif is_donchian:
+            return 'Donchian'
+        return 'None'
+
+    df['breakout_type'] = df.apply(get_breakout_type, axis=1)
+
+    # --- Create Breakout_TFs string ---
+    df['Breakout_TFs'] = combined_df.apply(
+        lambda row: ','.join([tf_display_map.get(tf, tf) for tf, is_breakout in row.items() if is_breakout]),
+        axis=1
+    )
+
+    return df
 
 
 #Add API to SAVE complete scan results into MONGO DB (ScannerDB) and RETRIEVE when APP re-starts
@@ -230,8 +232,16 @@ def save_scan_results(df: pd.DataFrame):
         print("No data to save to MongoDB.")
         return
 
+    # Select only the columns needed for the UI to reduce database size
+    ui_columns = [
+        'name', 'logoid', 'relative_volume_10d_calc', 'Breakout_TFs',
+        'fired_timestamp', 'momentum', 'breakout_type'
+    ]
+    # Ensure only existing columns are selected
+    df_ui = df[[col for col in ui_columns if col in df.columns]].copy()
+
     collection = get_mongo_collection()
-    records = df.to_dict(orient='records')
+    records = df_ui.to_dict(orient='records')
     
     upsert_count = 0
     modified_count = 0
