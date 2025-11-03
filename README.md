@@ -1,0 +1,3 @@
+# scan
+
+REMOVE DUPLICATES in ALL FIRED EVEN AND GROUP BY fired_timestamp
