@@ -270,8 +270,7 @@ const formattedTime = date.toTimeString().slice(0, 8);
 
         function renderCells(selection, type) {
             const enterCells = selection.enter().append("div").attr("class", "cell")
-                // Use d.ticker for all_fired and d.name for fired/in_squeeze
-                .on("click", (event, d) => window.open(`https://in.tradingview.com/chart/?symbol=NSE:${d.name || d.ticker}`, "_blank")) 
+                .on("click", (event, d) => window.open(`https://in.tradingview.com/chart/?symbol=NSE:${d.name}`, "_blank"))
                 .on("mouseover", function(event, d) {
                     tooltip.transition().duration(200).style("opacity", .9);
                     tooltip.html(getTooltipHtml(d, type)).style("left", (event.pageX + 10) + "px").style("top", (event.pageY - 28) + "px");
@@ -291,7 +290,7 @@ const formattedTime = date.toTimeString().slice(0, 8);
             const updateCells = enterCells.merge(selection);
             updateCells.style("background-color", d => getCellColor(d));
             updateCells.select(".stock-logo").attr("src", d => d.logoid ? `https://s3-symbol-logo.tradingview.com/${d.logoid}.svg` : '').style("display", d => d.logoid ? 'block' : 'none');
-            updateCells.select(".stock-ticker").text(d => (d.name || d.ticker).replace('NSE:', '')); 
+            updateCells.select(".stock-ticker").text(d => d.name.replace('NSE:', ''));
             updateCells.select(".stock-info").text(d => `RVOL: ${d.relative_volume_10d_calc.toFixed(2)}`);
             updateCells.select(".breakout-badge").text(d => d.breakout_type ? d.breakout_type.charAt(0) : '');
             
@@ -372,8 +371,12 @@ const formattedTime = date.toTimeString().slice(0, 8);
 
             updateGroups.each(function([group, stocks]) {
                 // Sort by fired timestamp (most recent first)
-                const sortedStocks = stocks.sort((a, b) => new Date(b.fired_timestamp) - new Date(a.fired_timestamp)); 
-                const cells = d3.select(this).select('.grid-container').selectAll('.cell').data(sortedStocks, d => d.ticker);
+                const sortedStocks = stocks.sort((a, b) => new Date(b.fired_timestamp) - new Date(a.fired_timestamp));
+
+                // Deduplicate stocks within the same time group, keeping the most recent one
+                const uniqueStocks = Array.from(d3.group(sortedStocks, d => d.name).values()).map(d => d[0]);
+
+                const cells = d3.select(this).select('.grid-container').selectAll('.cell').data(uniqueStocks, d => d.name);
                 cells.exit().remove();
                 // Pass 'all_fired' as type to ensure correct tooltip and time display
                 renderCells(cells, 'all_fired'); 
