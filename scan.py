@@ -225,20 +225,45 @@ def get_mongo_collection():
     return db[COLLECTION_NAME]
 
 def save_scan_results(df: pd.DataFrame):
-    """Saves the DataFrame to MongoDB."""
+    """Saves the DataFrame to MongoDB using an upsert mechanism to avoid duplicates."""
     if df.empty:
         print("No data to save to MongoDB.")
         return
 
     collection = get_mongo_collection()
-    
-    # Convert DataFrame to a list of dictionaries (JSON format)
     records = df.to_dict(orient='records')
     
-    # Clear existing data and insert new data
-    # collection.delete_many({})
-    collection.insert_many(records)
-    print(f"Saved {len(records)} records to MongoDB.")
+    upsert_count = 0
+    modified_count = 0
+
+    for record in records:
+        # Use 'name' and 'Breakout_TFs' to uniquely identify a breakout event
+        query = {
+            'name': record['name'],
+            'Breakout_TFs': record.get('Breakout_TFs')
+        }
+
+        # Prepare the update document
+        update_doc = record.copy()
+        update_doc['last_updated'] = pd.Timestamp.now()
+
+        # Remove the original fired_timestamp from the main update payload
+        original_timestamp = update_doc.pop('fired_timestamp', None)
+
+        update = {
+            '$set': update_doc,
+            '$setOnInsert': {
+                'fired_timestamp': original_timestamp
+            }
+        }
+
+        result = collection.update_one(query, update, upsert=True)
+        if result.upserted_id:
+            upsert_count += 1
+        elif result.modified_count > 0:
+            modified_count += 1
+
+    print(f"Upserted {upsert_count} and modified {modified_count} records in MongoDB.")
 
 def load_scan_results() -> pd.DataFrame:
     """Loads scan results from MongoDB."""
