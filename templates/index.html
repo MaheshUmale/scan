@@ -84,13 +84,24 @@
                 </div>
                 <form id="settings-form">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label for="market" class="block text-sm font-medium text-gray-300">Market</label>
-                            <input type="text" id="market" name="market" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-gray-300">Market Presets</label>
+                            <div class="mt-2 flex items-center">
+                                <span class="text-sm font-medium text-gray-400 mr-3">India</span>
+                                <label for="market-toggle" class="inline-flex relative items-center cursor-pointer">
+                                    <input type="checkbox" value="" id="market-toggle" class="sr-only peer">
+                                    <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                                <span class="text-sm font-medium text-gray-400 ml-3">America</span>
+                            </div>
                         </div>
-                        <div>
-                            <label for="exchange" class="block text-sm font-medium text-gray-300">Exchange</label>
-                            <input type="text" id="exchange" name="exchange" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <div class="col-span-2">
+                            <label for="market" class="block text-sm font-medium text-gray-300">Market</label>
+                            <textarea id="market" name="market" rows="2" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
+                        </div>
+                        <div class="col-span-2">
+                            <label for="exchange" class="block text-sm font-medium text-gray-300">Exchange (comma-separated)</label>
+                            <textarea id="exchange" name="exchange" rows="3" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
                         </div>
                         <div>
                             <label for="min_price" class="block text-sm font-medium text-gray-300">Min Price</label>
@@ -487,9 +498,25 @@ const formattedTime = date.toTimeString().slice(0, 8);
                 Object.keys(savedSettings).forEach(key => {
                     const input = settingsForm.elements[key];
                     if (input) {
-                        input.value = savedSettings[key];
+                        // If the value is an array, join it into a comma-separated string
+                        if (Array.isArray(savedSettings[key])) {
+                            input.value = savedSettings[key].join(',');
+                        } else {
+                            input.value = savedSettings[key];
+                        }
                     }
                 });
+                // Set the toggle based on the loaded market
+                const marketValue = Array.isArray(savedSettings.market) ? savedSettings.market.join(',') : savedSettings.market;
+                if (marketValue && marketValue.toLowerCase().includes('america')) {
+                    marketToggle.checked = true;
+                } else {
+                    marketToggle.checked = false;
+                }
+            } else {
+                 // Default to America if no settings are saved
+                marketToggle.checked = true;
+                updateMarketFields(true);
             }
         }
 
@@ -516,6 +543,35 @@ const formattedTime = date.toTimeString().slice(0, 8);
                 alert("Error: Could not save settings to the server.");
             }
         }
+
+        // --- Settings Modal Logic ---
+
+        const marketToggle = document.getElementById('market-toggle');
+        const marketInput = document.getElementById('market');
+        const exchangeInput = document.getElementById('exchange');
+
+        const marketPresets = {
+            india: {
+                market: "india",
+                exchange: "NSE"
+            },
+            america: {
+                market: "america",
+                exchange: "NASDAQ,NYSE,AMEX"
+            }
+        };
+
+        function updateMarketFields(isAmerica) {
+            const preset = isAmerica ? marketPresets.america : marketPresets.india;
+            marketInput.value = preset.market;
+            exchangeInput.value = preset.exchange;
+        }
+
+        marketToggle.addEventListener('change', (event) => {
+            updateMarketFields(event.target.checked);
+        });
+
+        // --- End of Settings Modal Logic ---
 
         // Initial setup
         setupControls();

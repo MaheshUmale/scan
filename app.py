@@ -120,7 +120,7 @@ def update_settings():
                         listExchanges = str(value).split(',')
                         scanner_settings[key] = listExchanges
                     elif key == 'market':
-                        listmarket = str(value).spli(',')
+                        listmarket = str(value).split(',')
                         scanner_settings[key] = listmarket
                     else:
                         scanner_settings[key] = value
