@@ -92,6 +92,8 @@ def run_intraday_scan(settings, cookies):
     try:
         # print(f"Running intraday scan for timeframe: {tf or '1D'}")
         _, df = query.get_scanner_data(cookies=cookies)
+        if df is not None:
+            df = df.fillna(value=pd.NA).replace({pd.NA: None})
         print(f"Scan completed ") 
         ##print size of df
         print(f"QUERY RESULT ----> size: {len(df)}")
