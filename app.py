@@ -1,9 +1,10 @@
 from flask import Flask, request, jsonify, render_template
 from tradingview_screener import Query, col, And, Or
 import pandas as pd
-from datetime import datetime, timezone
+from datetime import datetime, timezone, time
 import threading
 from time import sleep
+import pytz
 import os
 import rookiepy
 from scan import run_intraday_scan, save_scan_results, load_scan_results
@@ -109,25 +110,34 @@ def update_settings():
                     pass
     return jsonify({"status": "success", "settings": scanner_settings})
 
+def is_market_open():
+    """Checks if the Indian stock market is currently within trading hours (9:15 AM to 3:30 PM IST)."""
+    IST = pytz.timezone('Asia/Kolkata')
+    now_ist = datetime.now(IST)
+    market_start = time(9, 15)
+    market_end = time(15, 30)
+
+    # Check if the current time is a weekday and within the trading window
+    return (now_ist.weekday() < 5) and (market_start <= now_ist.time() <= market_end)
+
 if __name__ == "__main__":
     def background_scanner():
         """Function to run scans in the background."""
         while True:
-            print("Running background scanner...")
-            with data_lock:
-                current_settings = scanner_settings.copy()
+            if is_market_open():
+                print("Market is open. Running background scanner...")
+                with data_lock:
+                    current_settings = scanner_settings.copy()
 
-            
+                # Run intraday scan
+                intraday_results = run_intraday_scan(current_settings, cookies)
 
-            # Run intraday scan
-            intraday_results = run_intraday_scan(current_settings, cookies)
-            # print(intraday_results)
+                with data_lock:
+                    app_state.set_latest_scan_results(intraday_results)
+            else:
+                print("Market is closed. Scanner is sleeping.")
 
-            with data_lock:
-                app_state.set_latest_scan_results(intraday_results)
-                # app_state.add_fired_events(intraday_results["fired"].to_dict(orient='records'))
-
-            sleep(300) # Scan every 5 minutes
+            sleep(300)  # Check every 5 minutes
 
     scanner_thread = threading.Thread(target=background_scanner, daemon=True)
     scanner_thread.start()
