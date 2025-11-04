@@ -50,6 +50,10 @@
                 <button id="settings-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-3 rounded-md flex items-center justify-center transition">
                     Settings
                 </button>
+                <button id="scan-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded-md flex items-center justify-center transition">
+                    <span class="spinner"></span>
+                    Manual Scan
+                </button>
             </div>
             <p id="scan-status" class="text-sm text-gray-400"></p>
         </div>
@@ -523,6 +527,28 @@ const formattedTime = date.toTimeString().slice(0, 8);
         closeSettingsBtn.addEventListener('click', hideSettingsModal);
         cancelSettingsBtn.addEventListener('click', hideSettingsModal);
         settingsForm.addEventListener('submit', saveSettings);
+
+        const scanBtn = document.getElementById('scan-btn');
+        scanBtn.addEventListener('click', async () => {
+            scanBtn.classList.add('loading');
+            scanBtn.disabled = true;
+            scanStatus.textContent = 'Manual scan in progress...';
+
+            try {
+                const response = await fetch('/manual_scan', { method: 'POST' });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                // After the manual scan is complete, fetch the latest data to update the UI
+                await fetchLatestData();
+            } catch (error) {
+                console.error("Manual scan failed:", error);
+                scanStatus.textContent = 'Manual scan failed. See console for details.';
+            } finally {
+                scanBtn.classList.remove('loading');
+                scanBtn.disabled = false;
+            }
+        });
     </script>
 </body>
 </html>

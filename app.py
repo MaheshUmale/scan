@@ -110,6 +110,20 @@ def update_settings():
                     pass
     return jsonify({"status": "success", "settings": scanner_settings})
 
+@app.route('/manual_scan', methods=['POST'])
+def manual_scan():
+    """Triggers a manual scan and updates the app state."""
+    print("Manual scan triggered.")
+    with data_lock:
+        current_settings = scanner_settings.copy()
+
+    intraday_results = run_intraday_scan(current_settings, cookies)
+
+    with data_lock:
+        app_state.set_latest_scan_results(intraday_results)
+
+    return jsonify({"status": "success", "message": "Manual scan completed."})
+
 def is_market_open():
     """Checks if the Indian stock market is currently within trading hours (9:15 AM to 3:30 PM IST)."""
     IST = pytz.timezone('Asia/Kolkata')
