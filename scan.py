@@ -21,6 +21,13 @@ tf_display_map = { '|1': '1m', '|5': '5m', '|15': '15m', '|30': '30m', '|60': '1
 tf_suffix_map = {v: k for k, v in tf_display_map.items()}
 
 
+# Define the columns that are essential for the UI.
+UI_COLUMNS = [
+    'name', 'logoid', 'relative_volume_10d_calc', 'Breakout_TFs',
+    'fired_timestamp', 'momentum', 'breakout_type', 'highest_tf'
+]
+
+
 # Construct select columns for all timeframes
 select_cols = ['name', 'logoid', 'close', 'MACD.hist','relative_volume_10d_calc', 'beta_1_year']
 for tf in timeframes:
@@ -149,7 +156,11 @@ def run_intraday_scan(settings, cookies):
 
     # print(df_all.columns)
     save_scan_results(df_New)
-    return {"fired": df_New}
+
+    # Filter the DataFrame to include only the columns needed by the UI
+    df_filtered = df_New[[col for col in UI_COLUMNS if col in df_New.columns]].copy()
+
+    return {"fired": df_filtered}
 
 import pandas as pd
 
@@ -252,12 +263,8 @@ def save_scan_results(df: pd.DataFrame):
         return
 
     # Select only the columns needed for the UI to reduce database size
-    ui_columns = [
-        'name', 'logoid', 'relative_volume_10d_calc', 'Breakout_TFs',
-        'fired_timestamp', 'momentum', 'breakout_type', 'highest_tf'
-    ]
     # Ensure only existing columns are selected
-    df_ui = df[[col for col in ui_columns if col in df.columns]].copy()
+    df_ui = df[[col for col in UI_COLUMNS if col in df.columns]].copy()
 
     collection = get_mongo_collection()
     records = df_ui.to_dict(orient='records')
