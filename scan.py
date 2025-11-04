@@ -210,7 +210,26 @@ def identify_combined_breakout_timeframes(df: pd.DataFrame, timeframes: list) ->
         axis=1
     )
 
+    df['highest_tf'] = df['Breakout_TFs'].apply(
+        lambda tfs: get_highest_timeframe(tfs, tf_order_map, tf_suffix_map)
+    )
+
     return df
+
+
+def get_highest_timeframe(breakout_tfs_str, order_map, suffix_map):
+    """
+    Determines the highest timeframe from a comma-separated string of breakout timeframes.
+    """
+    if not isinstance(breakout_tfs_str, str) or not breakout_tfs_str:
+        return 'Unknown'
+
+    tfs = breakout_tfs_str.split(',')
+
+    # Get the suffix with the highest order value, default to a low value if not found
+    highest_tf_suffix = max(tfs, key=lambda tf: order_map.get(suffix_map.get(tf, ''), 0))
+
+    return highest_tf_suffix
 
 
 #Add API to SAVE complete scan results into MONGO DB (ScannerDB) and RETRIEVE when APP re-starts
@@ -235,7 +254,7 @@ def save_scan_results(df: pd.DataFrame):
     # Select only the columns needed for the UI to reduce database size
     ui_columns = [
         'name', 'logoid', 'relative_volume_10d_calc', 'Breakout_TFs',
-        'fired_timestamp', 'momentum', 'breakout_type'
+        'fired_timestamp', 'momentum', 'breakout_type', 'highest_tf'
     ]
     # Ensure only existing columns are selected
     df_ui = df[[col for col in ui_columns if col in df.columns]].copy()
