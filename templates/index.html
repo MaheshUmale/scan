@@ -307,12 +307,18 @@ const formattedTime = date.toTimeString().slice(0, 8);
             firedContainer.html(data.length === 0 ? "<p class='col-span-full text-gray-400 text-center py-4'>No recent breakouts found.</p>" : "");
             if (data.length > 0) firedContainer.html("");
 
-            const tfOrder = ['Monthly', 'Weekly', '4H', '2H', '1H', '30m', '15m', '5m', '1m', 'Daily', 'Unknown'];
+            const tfOrder = ['Monthly', 'Weekly', 'Daily', '4H', '2H', '1H', '30m', '15m', '5m', '3m','1m'];
 
-            // Handle cases where Breakout_TFs can be an array
-            const groupedData = d3.group(data, d => Array.isArray(d.Breakout_TFs) ? d.Breakout_TFs.join(', ') : d.Breakout_TFs);
+            // Group by the new 'highest_tf' field
+            const groupedData = d3.group(data, d => d.highest_tf || 'Unknown');
 
-            const sortedGroups = Array.from(groupedData.entries()).sort((a, b) => tfOrder.indexOf(a[0]) - tfOrder.indexOf(b[0]));
+            const sortedGroups = Array.from(groupedData.entries()).sort((a, b) => {
+                const aIndex = tfOrder.indexOf(a[0]);
+                const bIndex = tfOrder.indexOf(b[0]);
+                // Handle cases where a timeframe might not be in the order list
+                return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex);
+            });
+
 
             const groups = firedContainer.selectAll('.timeframe-box').data(sortedGroups, d => d[0]);
             groups.exit().remove();
@@ -325,24 +331,13 @@ const formattedTime = date.toTimeString().slice(0, 8);
             updateGroups.select('h2').text(d => `Fired on ${d[0]} (${d[1].length})`);
 
             updateGroups.each(function([tf, stocks]) {
-                const sortedStocks = stocks.sort((a,b) => b.value - a.value);
+                const sortedStocks = stocks.sort((a,b) => b.relative_volume_10d_calc - a.relative_volume_10d_calc);
                 const cells = d3.select(this).select('.grid-container').selectAll('.cell').data(sortedStocks, d => d.name);
                 cells.exit().remove();
                 renderCells(cells, 'fired');
             });
         }
         
-        /**
-         * Groups fired events based on time elapsed since fired_timestamp.
-         */
-        function getTimeSinceFiredGroup(timestamp) {
-            if (timestamp) {
-            return  timeAgo(timestamp);
-        }
-        return 'other';
-        }
-
-
         /**
          * Renders all fired events using the grid structure and time-based grouping.
          */
@@ -354,13 +349,19 @@ const formattedTime = date.toTimeString().slice(0, 8);
                 return;
             }
 
-            // Group by the new time-since-fired logic
-            const groupedData = d3.group(data, d => getTimeSinceFiredGroup(d.fired_timestamp)); 
+            const tfOrder = ['Monthly', 'Weekly', 'Daily', '4H', '2H', '1H', '30m', '15m', '5m', '3m','1m'];
+
+            // Group by the new 'highest_tf' field
+            const groupedData = d3.group(data, d => d.highest_tf || 'Unknown');
             
             // Sort groups by the predefined order
-            const sortedGroups = Array.from(groupedData.entries()).sort((a, b) => 
-                timeGroupOrder.indexOf(a[0]) - timeGroupOrder.indexOf(b[0])
-            );
+            const sortedGroups = Array.from(groupedData.entries()).sort((a, b) => {
+                const aIndex = tfOrder.indexOf(a[0]);
+                const bIndex = tfOrder.indexOf(b[0]);
+                // Handle cases where a timeframe might not be in the order list
+                return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex);
+            });
+
 
             const groups = allFiredContainer.selectAll('.timeframe-box').data(sortedGroups, d => d[0]);
             groups.exit().remove();
@@ -371,7 +372,7 @@ const formattedTime = date.toTimeString().slice(0, 8);
 
             const updateGroups = enterGroups.merge(groups);
             // Use the time group as the title
-            updateGroups.select('h2').text(d => `${d[0]} (${d[1].length})`); 
+            updateGroups.select('h2').text(d => `ALL ${d[0]} (${d[1].length})`);
 
             updateGroups.each(function([group, stocks]) {
                 // Sort by fired timestamp (most recent first)
