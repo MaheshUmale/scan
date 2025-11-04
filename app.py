@@ -61,6 +61,11 @@ app_state = AppState()
 def index():
     return render_template('index.html')
 
+@app.route('/v2')
+def index2():
+    return render_template('index2.html')
+
+
 @app.route('/get_latest_data', methods=['GET'])
 def get_latest_data():
     """Returns the latest cached scan data."""
@@ -138,8 +143,11 @@ if __name__ == "__main__":
     def background_scanner():
         """Function to run scans in the background."""
         while True:
+            IST = pytz.timezone('Asia/Kolkata')
+            now_ist = datetime.now(IST)
             if is_market_open():
-                print("Market is open. Running background scanner...")
+                
+                print(f"Market is open. Running background scanner...{now_ist}")
                 with data_lock:
                     current_settings = scanner_settings.copy()
 
@@ -148,10 +156,12 @@ if __name__ == "__main__":
 
                 with data_lock:
                     app_state.set_latest_scan_results(intraday_results)
+                sleep(30)
             else:
-                print("Market is closed. Scanner is sleeping.")
+                print(f"Market is closed. Scanner is sleeping 5min. {now_ist}")
+                sleep(300)
 
-            sleep(300)  # Check every 5 minutes
+              # Check every 5 minutes
 
     scanner_thread = threading.Thread(target=background_scanner, daemon=True)
     scanner_thread.start()

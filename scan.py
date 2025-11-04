@@ -3,21 +3,21 @@ from tradingview_screener import Query, col, And, Or
 import pandas as pd
 
 VOLUME_THRESHOLDS = {
-    '|3': 15000,
-    '|5': 25000,
-    '|15': 50000,
-    '|30': 100000,
-    '|60': 200000,
-    '|120': 400000,
-    '|240': 800000,
+    '|1': 25000,
+    '|5': 100000,
+    '|15': 300000,
+    '|30': 500000,
+    '|60': 1000000,
+    '|120': 2000000,
+    '|240': 4000000,
     '': 5000000,
     '|1W': 25000000,
     '|1M': 100000000
 }
 
-timeframes = ['|5', '|15','|30' ,'|60','|120','|240','']#, '|1W','|1M']
-tf_order_map = {'|1M': 10, '|1W': 9 , '': 8, '|240':7 , '|120': 6, '|60': 5, '|30': 4, '|15': 3, '|5': 2, '|3': 1}
-tf_display_map = {'|3': '3m', '|5': '5m', '|15': '15m', '|30': '30m', '|60': '1H', '|120': '2H', '|240': '4H','': 'Daily', '|1W': 'Weekly', '|1M': 'Monthly'}
+timeframes = ['|1',  '|5', '|15','|30' ,'|60','|120','|240','', '|1W','|1M']
+tf_order_map = {'|1M': 10, '|1W': 9 , '': 8, '|240':7 , '|120': 6, '|60': 5, '|30': 4, '|15': 3, '|5': 2, '|1': 1  }
+tf_display_map = { '|1': '1m', '|5': '5m', '|15': '15m', '|30': '30m', '|60': '1H', '|120': '2H', '|240': '4H','': 'Daily', '|1W': 'Weekly', '|1M': 'Monthly'}
 tf_suffix_map = {v: k for k, v in tf_display_map.items()}
 
 
@@ -26,8 +26,7 @@ select_cols = ['name', 'logoid', 'close', 'MACD.hist','relative_volume_10d_calc'
 for tf in timeframes:
     select_cols.extend([
         f'KltChnl.lower{tf}', f'KltChnl.upper{tf}', f'BB.lower{tf}', f'BB.upper{tf}',f'DonchCh20.Upper{tf}', f'DonchCh20.Lower{tf}',
-        f'KltChnl.lower[1]{tf}', f'KltChnl.upper[1]{tf}', f'BB.lower[1]{tf}', f'BB.upper[1]{tf}',f'DonchCh20.Upper[1]{tf}', f'DonchCh20.Lower[1]{tf}',
-        
+        f'KltChnl.lower[1]{tf}', f'KltChnl.upper[1]{tf}', f'BB.lower[1]{tf}', f'BB.upper[1]{tf}',f'DonchCh20.Upper[1]{tf}', f'DonchCh20.Lower[1]{tf}',        
         f'ATR{tf}', f'SMA20{tf}', f'volume{tf}', f'average_volume_10d_calc{tf}', f'Value.Traded{tf}'
     ])
 
@@ -40,44 +39,54 @@ def run_intraday_scan(settings, cookies):
     
     
     base_filters = [
-        col('beta_1_year') > 1.2,
+        col('beta_1_year') > 1.0,
         col('is_primary') == True,
         col('typespecs').has('common'),
         col('type') == 'stock',
         col('exchange') == 'NSE',
+        col('close').between(settings['min_price'], settings['max_price']),
         col('active_symbol') == True,
+        col('Value.Traded|5') > settings['min_value_traded'],
     ]
 
     # for tf in timeframes:
     donchian_break = [Or(
         col(f'DonchCh20.Upper{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
         col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}'), 
-        col(f'close{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
-        col(f'close{tf}') < col(f'DonchCh20.Lower[1]{tf}')
+        col(f'high{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
+        col(f'low{tf}') < col(f'DonchCh20.Lower[1]{tf}'),
+        col(f'high') > col(f'DonchCh20.Upper[1]{tf}'),
+        col(f'low') < col(f'DonchCh20.Lower[1]{tf}')
     ) for tf in timeframes]
 
     squeeze_breakout = [Or(
         And(
-            col(f'BB.upper[1]{tf}') < col(f'KltChnl.upper[1]{tf}'),
-           Or( col(f'BB.upper{tf}') >= col(f'KltChnl.upper{tf}'),
-              col(f'close{tf}') > col(f'BB.upper{tf}'),
-              col(f'close{tf}') > col(f'KltChnl.upper{tf}')
+            # col(f'BB.upper[1]{tf}') < col(f'KltChnl.upper[1]{tf}'),
+           Or(  col(f'BB.upper{tf}') >= col(f'KltChnl.upper{tf}'),
+                col(f'high{tf}') > col(f'BB.upper{tf}'),
+                col(f'high{tf}') > col(f'KltChnl.upper{tf}'),
+                col(f'high') > col(f'BB.upper[1]{tf}'),
+                col(f'high') > col(f'KltChnl.upper[1]{tf}')
            )
         ),
         And(
-            col(f'BB.lower[1]{tf}') > col(f'KltChnl.lower[1]{tf}'),
-            Or(col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),
-            
-            col(f'close{tf}') < col(f'BB.lower{tf}'),
-            col(f'close{tf}') < col(f'KltChnl.lower{tf}')
+            # col(f'BB.lower[1]{tf}') > col(f'KltChnl.lower[1]{tf}'),
+            Or( col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),            
+                col(f'low{tf}') < col(f'BB.lower{tf}'),
+                col(f'low{tf}') < col(f'KltChnl.lower{tf}'),
+                col(f'low') < col(f'BB.lower[1]{tf}'),
+                col(f'low') < col(f'KltChnl.lower[1]{tf}')
             ),
         ),
          
         
     )for tf in timeframes]
 
+
+ 
     vol_spike = [And(
-        col(f'volume{tf}') > VOLUME_THRESHOLDS.get(tf,50000),
+        col(f'volume{tf}')> VOLUME_THRESHOLDS.get(tf,50000), 
+        # col(f'average_volume_10d_calc{tf}') > 50000,
         Or (col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), 1.5),
             col(f'relative_volume_10d_calc{tf}') > 1.5,
             col('relative_volume_intraday|5') >1.5
@@ -86,28 +95,17 @@ def run_intraday_scan(settings, cookies):
     )for tf in timeframes]
 
    
-    filters = base_filters + [*vol_spike, Or(*donchian_break, *squeeze_breakout)]
-    query = Query().select(*select_cols).where2(And(*filters)).set_markets(settings['market'])
+    filters = base_filters + [Or(*vol_spike), Or(*donchian_break, *squeeze_breakout)]
+    query = Query().select(*select_cols).where2(And(*filters)).set_markets('india')  
+    # query.set_property('symbols', {'query': {'types': ['stock', 'fund', 'dr']}})
     
     try:
         # print(f"Running intraday scan for timeframe: {tf or '1D'}")
         _, df = query.get_scanner_data(cookies=cookies)
         if df is not None:
             df = df.fillna(value=pd.NA).replace({pd.NA: None})
-        print(f"Scan completed ") 
-        ##print size of df
-        print(f"QUERY RESULT ----> size: {len(df)}")
-        print(df.head())
+        print(f"Scan completed  size: {len(df)}") 
         
-        # print(df.columns)
-   
-
-        # print(df)
-
-
-        # all_results =load_scan_results()
-        # if  all_results is  None or  all_results.empty :
-        #     all_results = pd.DataFrame()
 
         if df is not None and not df.empty:
             df = identify_combined_breakout_timeframes(df, timeframes)
