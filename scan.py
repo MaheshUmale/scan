@@ -23,7 +23,7 @@ tf_suffix_map = {v: k for k, v in tf_display_map.items()}
 
 # Define the columns that are essential for the UI.
 UI_COLUMNS = [
-    'name', 'logoid', 'relative_volume_10d_calc', 'Breakout_TFs',
+    'name','ticker', 'logoid', 'relative_volume_10d_calc', 'Breakout_TFs',
     'fired_timestamp', 'momentum', 'breakout_type', 'highest_tf'
 ]
 
@@ -50,7 +50,7 @@ def run_intraday_scan(settings, cookies):
         col('is_primary') == True,
         col('typespecs').has('common'),
         col('type') == 'stock',
-        col('exchange') == 'NSE',
+        col('exchange').isin(settings['exchange']),
         col('close').between(settings['min_price'], settings['max_price']),
         col('active_symbol') == True,
         col('Value.Traded|5') > settings['min_value_traded'],
@@ -103,7 +103,8 @@ def run_intraday_scan(settings, cookies):
 
    
     filters = base_filters + [Or(*vol_spike), Or(*donchian_break, *squeeze_breakout)]
-    query = Query().select(*select_cols).where2(And(*filters)).set_markets('india')  
+    query = Query().select(*select_cols).where2(And(*filters)).set_markets(settings['market']).limit(1000)
+    
     # query.set_property('symbols', {'query': {'types': ['stock', 'fund', 'dr']}})
     
     try:
@@ -155,11 +156,11 @@ def run_intraday_scan(settings, cookies):
     df_New['momentum'] = df_New['MACD.hist'].apply(lambda x: 'Bullish' if x > 0 else ('Bearish' if x < 0 else 'Neutral'))
 
     # print(df_all.columns)
-    save_scan_results(df_New)
+    
 
     # Filter the DataFrame to include only the columns needed by the UI
     df_filtered = df_New[[col for col in UI_COLUMNS if col in df_New.columns]].copy()
-
+    save_scan_results(df_filtered)
     return {"fired": df_filtered}
 
 import pandas as pd

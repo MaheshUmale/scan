@@ -13,12 +13,14 @@ app = Flask(__name__)
 
 # --- Global state for scanner settings ---
 scanner_settings = {
-    "market": "india",
-    "exchange": "nse",
-    "min_price": 20,
-    "max_price": 10000,
+    # "market": "india",
+    # "exchange": "NSE",
+    "market" : "america",
+    "exchange": ["NASDAQ","NYSE","AMEX"],
+    "min_price": 2,
+    "max_price": 100000,
     "min_volume": 500000,
-    "min_value_traded": 10000000
+    "min_value_traded": 1000000
 }
 
 cookies = None
@@ -71,6 +73,8 @@ def get_latest_data():
     """Returns the latest cached scan data."""
     with data_lock:
         results = app_state.get_latest_scan_results()
+        if results is None or results["fired"].empty:
+            return jsonify({"fired": []})
         response_data = {
             "fired": results["fired"].to_dict(orient='records')
         }
@@ -87,6 +91,9 @@ def get_all_fired_events():
     with data_lock:
         df = app_state.get_all_fired_events()
         
+        if df.empty:
+            return jsonify([])
+
         # The frontend will handle the time grouping, so we just return the sorted data.
         df_sorted = df.sort_values(by='fired_timestamp', ascending=False)
 
@@ -95,7 +102,7 @@ def get_all_fired_events():
         return json_output
 
 
-
+#import split
 @app.route('/update_settings', methods=['POST'])
 def update_settings():
     """Updates the global scanner settings."""
@@ -109,6 +116,12 @@ def update_settings():
                         scanner_settings[key] = int(value)
                     elif isinstance(scanner_settings[key], float):
                         scanner_settings[key] = float(value)
+                    if key == 'exchange':
+                        listExchanges = str(value).split(',')
+                        scanner_settings[key] = listExchanges
+                    elif key == 'market':
+                        listmarket = str(value).spli(',')
+                        scanner_settings[key] = listmarket
                     else:
                         scanner_settings[key] = value
                 except (ValueError, TypeError):
@@ -131,13 +144,15 @@ def manual_scan():
 
 def is_market_open():
     """Checks if the Indian stock market is currently within trading hours (9:15 AM to 3:30 PM IST)."""
-    IST = pytz.timezone('Asia/Kolkata')
-    now_ist = datetime.now(IST)
-    market_start = time(9, 15)
-    market_end = time(15, 30)
+    # IST = pytz.timezone('Asia/Kolkata')
+    # now_ist = datetime.now(IST)
+    # market_start = time(9, 15)
+    # market_end = time(15, 30)
 
-    # Check if the current time is a weekday and within the trading window
-    return (now_ist.weekday() < 5) and (market_start <= now_ist.time() <= market_end)
+    # # Check if the current time is a weekday and within the trading window
+    # return (now_ist.weekday() < 5) and (market_start <= now_ist.time() <= market_end)
+    return True
+
 
 if __name__ == "__main__":
     def background_scanner():

@@ -274,7 +274,7 @@ const formattedTime = date.toTimeString().slice(0, 8);
 
         function renderCells(selection, type) {
             const enterCells = selection.enter().append("div").attr("class", "cell")
-                .on("click", (event, d) => window.open(`https://in.tradingview.com/chart/?symbol=NSE:${d.name}`, "_blank"))
+                .on("click", (event, d) => window.open(`https://in.tradingview.com/chart/?symbol=${d.ticker}`, "_blank"))
                 .on("mouseover", function(event, d) {
                     tooltip.transition().duration(200).style("opacity", .9);
                     tooltip.html(getTooltipHtml(d, type)).style("left", (event.pageX + 10) + "px").style("top", (event.pageY - 28) + "px");
@@ -307,7 +307,7 @@ const formattedTime = date.toTimeString().slice(0, 8);
             firedContainer.html(data.length === 0 ? "<p class='col-span-full text-gray-400 text-center py-4'>No recent breakouts found.</p>" : "");
             if (data.length > 0) firedContainer.html("");
 
-            const tfOrder = ['Monthly', 'Weekly', 'Daily', '4H', '2H', '1H', '30m', '15m', '5m', '3m','1m'];
+            const tfOrder = ['1m', '3m', '5m', '15m', '30m', '1H', '2H', '4H', 'Daily', 'Weekly', 'Monthly'];
 
             // Group by the new 'highest_tf' field
             const groupedData = d3.group(data, d => d.highest_tf || 'Unknown');
@@ -349,7 +349,7 @@ const formattedTime = date.toTimeString().slice(0, 8);
                 return;
             }
 
-            const tfOrder = ['Monthly', 'Weekly', 'Daily', '4H', '2H', '1H', '30m', '15m', '5m', '3m','1m'];
+            const tfOrder = ['1m', '3m', '5m', '15m', '30m', '1H', '2H', '4H', 'Daily', 'Weekly', 'Monthly']
 
             // Group by the new 'highest_tf' field
             const groupedData = d3.group(data, d => d.highest_tf || 'Unknown');
@@ -372,7 +372,7 @@ const formattedTime = date.toTimeString().slice(0, 8);
 
             const updateGroups = enterGroups.merge(groups);
             // Use the time group as the title
-            updateGroups.select('h2').text(d => `ALL ${d[0]} (${d[1].length})`);
+            updateGroups.select('h2').text(d => `${d[0]} (${d[1].length})`);
 
             updateGroups.each(function([group, stocks]) {
                 // Sort by fired timestamp (most recent first)
