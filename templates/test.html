@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Breakout Dashboard (Treemap View)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background-color: #111827; color: white; }
+        .section-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #4b5563; cursor: pointer; display: flex; align-items: center; user-select: none; }
+        .section-title .arrow { margin-right: 12px; transition: transform 0.2s; font-size: 1rem; }
+        .section-title.collapsed .arrow { transform: rotate(-90deg); }
+        
+        .tooltip { position: absolute; text-align: center; padding: 8px; font: 12px sans-serif; background: #1f2937; border: 1px solid #4b5563; border-radius: 8px; pointer-events: none; opacity: 0; color: white; z-index: 10; }
+        #scan-btn.loading { cursor: not-allowed; background-color: #374151; }
+        #scan-btn.loading .spinner { display: inline-block; }
+        .spinner { display: none; width: 1rem; height: 1rem; border: 2px solid rgba(255,255,255,.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; margin-right: 0.5rem; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Styling for Treemap Headers to fix overlap */
+        .timeframe-header, .timeframe-header-all {
+            background-color: #111827; 
+            padding: 2px 5px;
+            pointer-events: none; 
+        }
+    </style>
+</head>
+<body class="bg-gray-900">
+    <div class="container mx-auto p-4 md:p-6">
+        <header class="text-center mb-6">
+            <h1 class="text-2xl md:text-3xl font-bold">Breakout Dashboard (Treemap)</h1>
+        </header>
+
+        <div class="bg-gray-800 p-3 rounded-lg mb-6 border border-gray-700 flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <button id="settings-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-3 rounded-md flex items-center justify-center transition">
+                    Settings
+                </button>
+                <button id="scan-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded-md flex items-center justify-center transition">
+                    <span class="spinner"></span>
+                    Manual Scan
+                </button>
+            </div>
+            <p id="scan-status" class="text-sm text-gray-400"></p>
+        </div>
+
+        <div id="main-content">
+            <div id="fired-section-wrapper" class="mb-8">
+                <h2 id="fired-title" class="section-title"><span class="arrow">&#9662;</span>Recent Breakouts (Timeframe X, Potency Y)</h2>
+                <div id="fired-container" class="col-span-full text-gray-400 text-center py-4" style="height: 600px;">
+                    <p class='col-span-full text-gray-400 text-center py-4'>Run a scan to see recent breakouts.</p>
+                </div>
+            </div>
+
+            <div id="all-fired-section-wrapper" class="mb-8">
+                <h2 id="all-fired-title" class="section-title collapsed"><span class="arrow">&#9662;</span>All Breakouts Today (Full Canvas)</h2>
+                <div id="all-fired-container" style="display: none; height: 600px;" class="col-span-full text-gray-400 text-center py-4">
+                    <p class='col-span-full text-gray-400 text-center py-4' id="all-fired-status">Loading all fired events...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="tooltip"></div>
+
+        <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-30">
+            <div class="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md border border-gray-700">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold">Scanner Settings</h3>
+                    <button id="close-settings-btn" class="text-gray-400 hover:text-white">&times;</button>
+                </div>
+                <form id="settings-form">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-gray-300">Market Presets</label>
+                            <div class="mt-2 flex items-center">
+                                <span class="text-sm font-medium text-gray-400 mr-3">India</span>
+                                <label for="market-toggle" class="inline-flex relative items-center cursor-pointer">
+                                    <input type="checkbox" value="" id="market-toggle" class="sr-only peer">
+                                    <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                                <span class="text-sm font-medium text-gray-400 ml-3">America</span>
+                            </div>
+                        </div>
+                        <div class="col-span-2">
+                            <label for="market" class="block text-sm font-medium text-gray-300">Market</label>
+                            <textarea id="market" name="market" rows="2" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
+                        </div>
+                        <div class="col-span-2">
+                            <label for="exchange" class="block text-sm font-medium text-gray-300">Exchange (comma-separated)</label>
+                            <textarea id="exchange" name="exchange" rows="3" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
+                        </div>
+                        <div>
+                            <label for="min_price" class="block text-sm font-medium text-gray-300">Min Price</label>
+                            <input type="number" id="min_price" name="min_price" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="max_price" class="block text-sm font-medium text-gray-300">Max Price</label>
+                            <input type="number" id="max_price" name="max_price" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="min_volume" class="block text-sm font-medium text-gray-300">Min Volume</label>
+                            <input type="number" id="min_volume" name="min_volume" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="min_value_traded" class="block text-sm font-medium text-gray-300">Min Value Traded</label>
+                            <input type="number" id="min_value_traded" name="min_value_traded" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                    </div>
+                    <div class="mt-6 flex justify-end space-x-3">
+                        <button type="button" id="cancel-settings-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-md transition">Cancel</button>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const firedContainer = d3.select("#fired-container");
+        const tooltip = d3.select(".tooltip");
+        const scanStatus = document.getElementById('scan-status');
+        
+        const allFiredContainer = d3.select('#all-fired-container');
+        const allFiredTitle = document.getElementById('all-fired-title');
+        
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsModal = document.getElementById('settings-modal');
+        const closeSettingsBtn = document.getElementById('close-settings-btn');
+        const cancelSettingsBtn = document.getElementById('cancel-settings-btn');
+        const settingsForm = document.getElementById('settings-form');
+
+        let autoRefreshInterval;
+        let allFiredRefreshInterval;
+        let isAllFiredLoaded = false;
+        
+        // --- GLOBAL TREEMAP CONSTANTS AND HELPERS ---
+        // ADJUSTED: Reduced left margin (from 10 to 5) and increased top margin (from 10 to 30)
+        // to move the chart content left and provide space for the potency label.
+        const margin = {top: 30, right: 10, bottom: 10, left: 5};
+        const width = 800 - margin.left - margin.right; // Base Width (used for 'Fired')
+        const height = 600 - margin.top - margin.bottom; // Base Height (used for 'Fired')
+
+        // Timeframe order for the horizontal grouping
+        const tfOrder = ['1m', '3m', '5m', '15m', '30m', '1H', '2H', '4H', 'Daily', 'Weekly', 'Monthly'];
+
+        // Helper function to get the index of the highest_tf for sorting
+        function getTFIndex(tf) {
+            const index = tfOrder.indexOf(tf);
+            return index === -1 ? 99 : index; // Unknown TFs go to the end
+        }
+        // --- END GLOBAL TREEMAP CONSTANTS ---
+
+
+        // --- Color Scales ---
+        const rvolDomain = [0, 5];
+        const bullishColor = d3.scaleLinear().domain(rvolDomain).range(["#064e3b", "#10b981"]).clamp(true);
+        const bearishColor = d3.scaleLinear().domain(rvolDomain).range(["#7f1d1d", "#ef4444"]).clamp(true);
+        const neutralColor = d3.scaleLinear().domain(rvolDomain).range(["#374151", "#6b7280"]).clamp(true);
+
+    /**
+     * Converts an ISO 8601 timestamp string into a human-readable relative time string.
+     */
+     function timeAgo(dateString) {
+        if (!dateString) return 'N/A';
+        try {
+            const date = new Date(dateString); 
+            const now = new Date();
+            const seconds = Math.floor((now  - date) / 1000);
+            const minutesElapsed = Math.floor(seconds / 60);
+
+            if (minutesElapsed <= 5) return '5m ago';
+            if (minutesElapsed <= 15) return '15 min ago';
+            if (minutesElapsed <= 30) return '30 min ago';
+            if (minutesElapsed <= 60) return '1 hr ago'; 
+            if (minutesElapsed <= 120) return '2 hr ago';
+            if (minutesElapsed <= 180) return '3 hr ago';
+            if (minutesElapsed <= 240) return '4 hr ago';
+            if (minutesElapsed <= 300) return '5 hr ago';
+            if (minutesElapsed <= 360) return '6 hr ago';
+            if (minutesElapsed <= 420) return '7 hr ago';
+
+            return Math.floor(minutesElapsed / 60) + ' hr ago';
+        } catch (e) {
+            console.error("Error calculating timeAgo for:", dateString, e);
+            return 'Invalid Time';
+        }
+    }
+
+
+        function getCellColor(d) {
+            if (d.momentum === 'Bullish') return bullishColor(d.relative_volume_10d_calc);
+            if (d.momentum === 'Bearish') return bearishColor(d.relative_volume_10d_calc);
+            return neutralColor(d.relative_volume_10d_calc);
+        }
+        
+        function formatTime(dateString) {
+            const date = new Date(dateString);
+            const formattedTime = date.toTimeString().slice(0, 8);
+            return formattedTime ;
+        }
+
+        function getTooltipHtml(d, type) {
+            const momentumHtml = `Momentum: <span style="color: ${getCellColor(d)};">${d.momentum}</span><br/>`;
+            let breakoutHtml = '';
+            
+            const ticker = d.ticker ? d.ticker.replace('NSE:', '') : d.name ? d.name.replace('NSE:', '') : 'N/A';
+            const breakoutTFs = Array.isArray(d.Breakout_TFs) ? d.Breakout_TFs.join(', ') : d.Breakout_TFs;
+
+            if (type === 'fired' || type === 'all_fired') {
+                const breakoutType = d.breakout_type || 'Breakout';
+                breakoutHtml = `<strong>${breakoutType}</strong> on TFs: ${breakoutTFs}<br/>`;
+            }
+
+            if (type === 'all_fired') {
+                breakoutHtml += `Time: ${formatTime(d.fired_timestamp)} (${timeAgo(d.fired_timestamp)})<br/>`;
+            }
+            
+            // Check if Potency_Score is null, NaN, or undefined
+            const potencyScoreValue = (d.Potency_Score !== null && !isNaN(d.Potency_Score)) ? d.Potency_Score.toFixed(2) : 'N/A';
+            const potencyScoreHtml = `Potency Score: <strong>${potencyScoreValue}</strong><br/>`;
+            
+            const rvolValue = (d.relative_volume_10d_calc !== null && !isNaN(d.relative_volume_10d_calc)) ? d.relative_volume_10d_calc.toFixed(2) : 'N/A';
+
+            return `<strong>${ticker}</strong><br/>` + breakoutHtml + momentumHtml + potencyScoreHtml + `RVOL: ${rvolValue}`;
+        }
+
+
+        // --- REPLACEMENT FOR renderFired (Treemap Logic) ---
+        function renderFired(data) {
+            firedContainer.html("");
+
+            if (data.length === 0) {
+                firedContainer.html("<p class='col-span-full text-gray-400 text-center py-4'>No recent breakouts found.</p>");
+                return;
+            }
+            
+            // Normalize Potency Score (NaN -> 0 for sorting purposes)
+            data.forEach(d => { d.Potency_Score = (d.Potency_Score === null || isNaN(d.Potency_Score)) ? 0 : d.Potency_Score; });
+
+            // 2. Prepare Data Hierarchy for Treemap
+            const root = {
+                name: "root",
+                children: []
+            };
+
+            const groupedData = d3.group(data, d => d.highest_tf || 'Unknown');
+
+            Array.from(groupedData.entries()).sort((a, b) => getTFIndex(a[0]) - getTFIndex(b[0])).forEach(([tf, stocks]) => {
+                const sortedStocks = stocks.sort((a, b) => b.Potency_Score - a.Potency_Score);
+
+                root.children.push({
+                    name: tf,
+                    tfIndex: getTFIndex(tf),
+                    children: sortedStocks.map(d => ({
+                        ...d,
+                        value: 1 
+                    }))
+                });
+            });
+
+            // 3. Create the D3 Hierarchy
+            const d3Root = d3.hierarchy(root)
+                .sum(d => d.value) 
+                .sort((a, b) => a.data.tfIndex - b.data.tfIndex || b.data.Potency_Score - a.data.Potency_Score); 
+
+            // 4. Initialize the Treemap Layout
+            const treemap = d3.treemap()
+                .size([width, height])
+                .paddingOuter(6)
+                .paddingTop(30) 
+                .paddingInner(1);
+
+            treemap(d3Root);
+
+            // 5. Render the Treemap SVG
+            const svg = firedContainer.append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            const node = svg.selectAll("g")
+                .data(d3Root.leaves()) 
+                .enter().append("g")
+                .attr("transform", d => `translate(${d.x0},${d.y0})`);
+
+            // Add rectangles (the stock cells)
+            node.append("rect")
+                .attr("class", "cell-rect")
+                .attr("width", d => d.x1 - d.x0)
+                .attr("height", d => d.y1 - d.y0)
+                .attr("fill", d => getCellColor(d.data))
+                .attr("stroke", "#374151")
+                .style("cursor", "pointer")
+                .on("click", (event, d) => window.open(`https://in.tradingview.com/chart/?symbol=${d.data.ticker}`, "_blank"))
+                .on("mouseover", function(event, d) {
+                    tooltip.transition().duration(200).style("opacity", .9);
+                    tooltip.html(getTooltipHtml(d.data, 'fired')).style("left", (event.pageX + 10) + "px").style("top", (event.pageY - 28) + "px");
+                    d3.select(this).style("stroke", "#9ca3af").style("stroke-width", "2px");
+                })
+                .on("mouseout", function() {
+                    tooltip.transition().duration(500).style("opacity", 0);
+                    d3.select(this).style("stroke", "#374151").style("stroke-width", "1px");
+                });
+                
+            // Add text label for the ticker
+            node.append("text")
+                .attr("x", 4)
+                .attr("y", 14)
+                .attr("fill", "white")
+                .style("font-size", d => Math.min(10, (d.x1 - d.x0) / 4) + 'px')
+                .text(d => d.data.name.replace('NSE:', ''))
+                .filter(d => (d.x1 - d.x0) > 20 && (d.y1 - d.y0) > 10); 
+
+            // Add potency score label
+            node.append("text")
+                .attr("x", 4)
+                .attr("y", 28)
+                .attr("fill", "#d1d5db")
+                .style("font-size", d => Math.min(8, (d.x1 - d.x0) / 6) + 'px') 
+                .text(d => `P: ${(d.Potency_Score === 0 ? 'N/A' : d.Potency_Score.toFixed(1))}`)
+                .filter(d => (d.x1 - d.x0) > 30 && (d.y1 - d.y0) > 20);
+
+            // Add Timeframe Titles (Group Headers) - FIX FOR OVERLAP
+            svg.selectAll(".timeframe-header")
+                .data(d3Root.children) 
+                .enter().append("text")
+                .attr("class", "timeframe-header")
+                .attr("transform", d => `translate(${d.x0 + 5}, ${d.y0 + 15})`) 
+                .text(d => `${d.data.name} TFs (${d.children.length})`)
+                .attr("font-size", "14px")
+                .attr("font-weight", "bold")
+                .attr("fill", "#d1d5db");
+
+            // Add an overall title/legend for the Y-axis (Potency)
+            // ADJUSTED: x position changed from -margin.left to 5
+            svg.append("text")
+                .attr("x", 5) 
+                .attr("y", 15)
+                .attr("text-anchor", "start")
+                .attr("fill", "white")
+                .style("font-size", "12px")
+                .style("font-weight", "bold")
+                .text("↑ Higher Potency");
+
+            // ADJUSTED: x position changed from -margin.left to 5
+            svg.append("text")
+                .attr("x", 5) 
+                .attr("y", height - 5)
+                .attr("text-anchor", "start")
+                .attr("fill", "white")
+                .style("font-size", "12px")
+                .style("font-weight", "bold")
+                .text("↓ Lower Potency");
+        }
+        // --- END REPLACEMENT FOR renderFired ---
+
+
+        async function fetchLatestData() {
+            try {
+                const response = await fetch('/get_latest_data');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                // --- JSON SANITIZATION FOR NaN ---
+                const rawText = await response.text();
+                const sanitizedText = rawText.replace(/NaN/g, 'null').replace(/-Infinity/g, 'null').replace(/Infinity/g, 'null');
+                const data = JSON.parse(sanitizedText);
+                // --- END SANITIZATION ---
+
+                updateDashboard(data);
+            } catch (error) {
+                console.error("Failed to fetch latest data or parse JSON:", error);
+                scanStatus.textContent = `Error fetching data. (Check console for details)`;
+            }
+        }
+
+        function startAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            fetchLatestData(); 
+            autoRefreshInterval = setInterval(fetchLatestData, 50000); 
+        }
+
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+        }
+
+        async function fetchAllFiredEvents() {
+            if (allFiredContainer.style('display') !== 'none' || !isAllFiredLoaded) {
+                try {
+                    const response = await fetch('/get_all_fired_events');
+                    if (!response.ok) throw new Error('Failed to fetch');
+
+                    // --- JSON SANITIZATION FOR NaN ---
+                    const rawText = await response.text();
+                    const sanitizedText = rawText.replace(/NaN/g, 'null').replace(/-Infinity/g, 'null').replace(/Infinity/g, 'null');
+                    const data = JSON.parse(sanitizedText);
+                    // --- END SANITIZATION ---
+
+                    renderAllFiredList(data);
+                    isAllFiredLoaded = true;
+                } catch (error) {
+                    console.error("Failed to fetch all fired events or parse JSON:", error);
+                    allFiredContainer.html('<p class="col-span-full text-red-500 text-center">Error loading data. (Check console for details)</p>');
+                }
+            }
+        }
+
+        // Functions to manage All Fired refresh interval
+        function startAllFiredRefresh() {
+            fetchAllFiredEvents(); 
+            if (allFiredRefreshInterval) clearInterval(allFiredRefreshInterval);
+            allFiredRefreshInterval = setInterval(fetchAllFiredEvents, 10000); 
+        }
+
+        function stopAllFiredRefresh() {
+            if (allFiredRefreshInterval) clearInterval(allFiredRefreshInterval);
+        }
+
+        
+        // --- REPLACEMENT FOR renderAllFiredList (Treemap Logic with Dynamic Size) ---
+        function renderAllFiredList(data) {
+            allFiredContainer.html(""); // Clear previous content
+            
+            if (data.length === 0) {
+                allFiredContainer.html('<p class="col-span-full text-gray-400 text-center py-4">No breakouts have fired today.</p>');
+                return;
+            }
+
+            // --- Dynamic Dimensions for Full Canvas ---
+            const allFiredWidth = Math.max(800, window.innerWidth * 0.9 - margin.left - margin.right); 
+            const allFiredHeight = Math.max(600, window.innerHeight * 0.8 - margin.top - margin.bottom); 
+            // ---------------------------------------------
+
+            // 1. Pre-process and Deduplicate Data
+            const sortedByTime = data.sort((a, b) => new Date(b.fired_timestamp) - new Date(a.fired_timestamp));
+            const uniqueStocks = Array.from(d3.group(sortedByTime, d => d.name).values()).map(d => d[0]);
+            
+            // Normalize Potency Score (NaN/null -> 0 for sorting purposes)
+            uniqueStocks.forEach(d => { d.Potency_Score = (d.Potency_Score === null || isNaN(d.Potency_Score)) ? 0 : d.Potency_Score; });
+
+            // 2. Prepare Data Hierarchy for Treemap
+            const root = { name: "root", children: [] };
+            const groupedData = d3.group(uniqueStocks, d => d.highest_tf || 'Unknown');
+
+            Array.from(groupedData.entries()).sort((a, b) => getTFIndex(a[0]) - getTFIndex(b[0])).forEach(([tf, stocks]) => {
+                const sortedStocks = stocks.sort((a, b) => b.Potency_Score - a.Potency_Score);
+                root.children.push({
+                    name: tf,
+                    tfIndex: getTFIndex(tf),
+                    children: sortedStocks.map(d => ({ ...d, value: 1 }))
+                });
+            });
+
+            // 3. Create the D3 Hierarchy
+            const d3Root = d3.hierarchy(root)
+                .sum(d => d.value)
+                .sort((a, b) => a.data.tfIndex - b.data.tfIndex || b.data.Potency_Score - a.data.Potency_Score); 
+
+            // 4. Initialize the Treemap Layout
+            const treemap = d3.treemap()
+                .size([allFiredWidth, allFiredHeight])
+                .paddingOuter(6)
+                .paddingTop(30)
+                .paddingInner(1);
+
+            treemap(d3Root);
+
+            // 5. Render the Treemap SVG
+            allFiredContainer.style('height', `${allFiredHeight + margin.top + margin.bottom}px`);
+
+            const svg = allFiredContainer.append("svg")
+                .attr("width", allFiredWidth + margin.left + margin.right)
+                .attr("height", allFiredHeight + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            const node = svg.selectAll("g")
+                .data(d3Root.leaves())
+                .enter().append("g")
+                .attr("transform", d => `translate(${d.x0},${d.y0})`);
+
+            // Add rectangles (the stock cells)
+            node.append("rect")
+                .attr("class", "cell-rect")
+                .attr("width", d => d.x1 - d.x0)
+                .attr("height", d => d.y1 - d.y0)
+                .attr("fill", d => getCellColor(d.data))
+                .attr("stroke", "#374151")
+                .style("cursor", "pointer")
+                .on("click", (event, d) => window.open(`https://in.tradingview.com/chart/?symbol=${d.data.ticker}`, "_blank"))
+                .on("mouseover", function(event, d) {
+                    tooltip.transition().duration(200).style("opacity", .9);
+                    tooltip.html(getTooltipHtml(d.data, 'all_fired')).style("left", (event.pageX + 10) + "px").style("top", (event.pageY - 28) + "px");
+                    d3.select(this).style("stroke", "#9ca3af").style("stroke-width", "2px");
+                })
+                .on("mouseout", function() {
+                    tooltip.transition().duration(500).style("opacity", 0);
+                    d3.select(this).style("stroke", "#374151").style("stroke-width", "1px");
+                });
+                
+            // Add text label for the ticker
+            node.append("text")
+                .attr("x", 4)
+                .attr("y", 14)
+                .attr("fill", "white")
+                .style("font-size", d => Math.min(10, (d.x1 - d.x0) / 4) + 'px')
+                .text(d => d.data.name.replace('NSE:', ''))
+                .filter(d => (d.x1 - d.x0) > 20 && (d.y1 - d.y0) > 10);
+
+            // Add potency score label
+            node.append("text")
+                .attr("x", 4)
+                .attr("y", 28)
+                .attr("fill", "#d1d5db")
+                .style("font-size", d => Math.min(8, (d.x1 - d.x0) / 6) + 'px') 
+                .text(d => `P: ${(d.Potency_Score === 0 ? 'N/A' : d.Potency_Score.toFixed(1))}`)
+                .filter(d => (d.x1 - d.x0) > 30 && (d.y1 - d.y0) > 20);
+
+            // Add Timeframe Titles (Group Headers) - FIX FOR OVERLAP
+            svg.selectAll(".timeframe-header-all")
+                .data(d3Root.children)
+                .enter().append("text")
+                .attr("class", "timeframe-header-all")
+                .attr("transform", d => `translate(${d.x0 + 5}, ${d.y0 + 15})`) 
+                .text(d => `${d.data.name} TFs (${d.children.length})`)
+                .attr("font-size", "14px")
+                .attr("font-weight", "bold")
+                .attr("fill", "#d1d5db");
+
+            // Add an overall title/legend for the Y-axis (Potency)
+            // ADJUSTED: x position changed from -margin.left to 5
+            svg.append("text")
+                .attr("x", 5) 
+                .attr("y", 15)
+                .attr("text-anchor", "start")
+                .attr("fill", "white")
+                .style("font-size", "12px")
+                .style("font-weight", "bold")
+                .text("↑ Higher Potency");
+
+            // ADJUSTED: x position changed from -margin.left to 5
+            svg.append("text")
+                .attr("x", 5) 
+                .attr("y", allFiredHeight - 5) 
+                .attr("text-anchor", "start")
+                .attr("fill", "white")
+                .style("font-size", "12px")
+                .style("font-weight", "bold")
+                .text("↓ Lower Potency");
+        }
+        // --- END REPLACEMENT FOR renderAllFiredList ---
+
+
+        function setupControls() {
+            // Updated click handler to target both fired and all-fired containers
+            d3.selectAll('.section-title').on('click', function() {
+                const titleEl = d3.select(this);
+                const wrapper = d3.select(this.parentNode);
+                const container = wrapper.select('#fired-container, #all-fired-container'); 
+                if (container.empty()) return;
+                
+                const isCollapsed = container.style('display') === 'none';
+                let displayStyle = 'block'; 
+                
+                container.style('display', isCollapsed ? displayStyle : 'none');
+                titleEl.classed('collapsed', !isCollapsed);
+                
+                if (titleEl.attr('id') === 'all-fired-title') {
+                    if (isCollapsed) {
+                        startAllFiredRefresh();
+                    } else {
+                        stopAllFiredRefresh();
+                    }
+                }
+            });
+        }
+
+        function updateDashboard(data, source = 'auto-refresh') {
+            renderFired(data.fired || []);
+
+            const timestamp = new Date().toLocaleTimeString();
+            if (source === 'manual') {
+                 scanStatus.textContent = `Manual refresh complete at ${timestamp}.`;
+            } else {
+                 scanStatus.textContent = `Last updated: ${timestamp}`;
+            }
+        }
+        
+        function showSettingsModal() { settingsModal.classList.remove('hidden'); }
+        function hideSettingsModal() { settingsModal.classList.add('hidden'); }
+
+        function loadSettings() {
+            const savedSettings = JSON.parse(localStorage.getItem('scannerSettings'));
+            if (savedSettings) {
+                Object.keys(savedSettings).forEach(key => {
+                    const input = settingsForm.elements[key];
+                    if (input) {
+                        if (Array.isArray(savedSettings[key])) {
+                            input.value = savedSettings[key].join(',');
+                        } else {
+                            input.value = savedSettings[key];
+                        }
+                    }
+                });
+                const marketValue = Array.isArray(savedSettings.market) ? savedSettings.market.join(',') : savedSettings.market;
+                if (marketValue && marketValue.toLowerCase().includes('america')) {
+                    marketToggle.checked = true;
+                } else {
+                    marketToggle.checked = false;
+                }
+            } else {
+                marketToggle.checked = true;
+                updateMarketFields(true);
+            }
+        }
+
+        async function saveSettings(event) {
+            event.preventDefault();
+            const formData = new FormData(settingsForm);
+            const newSettings = {};
+            for (const [key, value] of formData.entries()) {
+                newSettings[key] = isNaN(value) || value === '' ? value : Number(value);
+            }
+
+            localStorage.setItem('scannerSettings', JSON.stringify(newSettings));
+
+            try {
+                await fetch('/update_settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newSettings)
+                });
+                hideSettingsModal();
+            } catch (error) {
+                console.error("Failed to update settings:", error);
+                alert("Error: Could not save settings to the server.");
+            }
+        }
+
+        const marketToggle = document.getElementById('market-toggle');
+        const marketInput = document.getElementById('market');
+        const exchangeInput = document.getElementById('exchange');
+        const min_value_traded = document.getElementById('min_value_traded');
+        const min_volume = document.getElementById('min_volume');
+
+        const marketPresets = {
+            india: {
+                market: "india",
+                exchange: "NSE",
+                min_value_traded: 1000000,
+                min_volume: 50000,
+            },
+            america: {
+                market: "america",
+                exchange: "NASDAQ,NYSE,AMEX",
+                min_value_traded: 10000000,
+                min_volume: 10000,
+            }
+        };
+
+        function updateMarketFields(isAmerica) {
+            const preset = isAmerica ? marketPresets.america : marketPresets.india;
+            marketInput.value = preset.market;
+            exchangeInput.value = preset.exchange;
+            min_value_traded.value = preset.min_value_traded;
+            min_volume.value = preset.min_volume;
+        }
+
+        marketToggle.addEventListener('change', (event) => {
+            updateMarketFields(event.target.checked);
+        });
+
+        // Initial setup
+        setupControls();
+        loadSettings();
+        startAutoRefresh();
+
+        settingsBtn.addEventListener('click', showSettingsModal);
+        closeSettingsBtn.addEventListener('click', hideSettingsModal);
+        cancelSettingsBtn.addEventListener('click', hideSettingsModal);
+        settingsForm.addEventListener('submit', saveSettings);
+
+        const scanBtn = document.getElementById('scan-btn');
+        scanBtn.addEventListener('click', async () => {
+            scanBtn.classList.add('loading');
+            scanBtn.disabled = true;
+            scanStatus.textContent = 'Manual scan in progress...';
+
+            try {
+                const response = await fetch('/manual_scan', { method: 'POST' });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                // After the manual scan is complete, fetch the latest data to update the UI
+                await fetchLatestData();
+            } catch (error) {
+                console.error("Manual scan failed:", error);
+                scanStatus.textContent = 'Manual scan failed. See console for details.';
+            } finally {
+                scanBtn.classList.remove('loading');
+                scanBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

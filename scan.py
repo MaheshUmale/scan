@@ -16,15 +16,29 @@ VOLUME_THRESHOLDS = {
 }
 
 timeframes = ['|1',  '|5', '|15','|30' ,'|60','|120','|240','', '|1W','|1M']
-tf_order_map = {'|1M': 10, '|1W': 9 , '': 8, '|240':7 , '|120': 6, '|60': 5, '|30': 4, '|15': 3, '|5': 2, '|1': 1  }
+tf_order_map = { '|1': 1 ,  '|5': 2, '|15': 3,  '|30': 4, '|60': 5, '|120': 6,   '|240':7, '': 8, '|1W': 9 , '|1M': 10 }  
 tf_display_map = { '|1': '1m', '|5': '5m', '|15': '15m', '|30': '30m', '|60': '1H', '|120': '2H', '|240': '4H','': 'Daily', '|1W': 'Weekly', '|1M': 'Monthly'}
 tf_suffix_map = {v: k for k, v in tf_display_map.items()}
+
+# Potency Scoring Constants for Potency_Score calculation
+POTENCY_WEIGHTS = {
+    'RVOL': 2.0,
+    'TF_Order': 1.5,
+    'Breakout_Type_Score': 1.0,
+}
+
+BREAKOUT_TYPE_SCORES = {
+    'Both': 3,
+    'Squeeze': 2,
+    'Donchian': 1,
+    'None': 0
+}
 
 
 # Define the columns that are essential for the UI.
 UI_COLUMNS = [
     'name','ticker', 'logoid', 'relative_volume_10d_calc', 'Breakout_TFs',
-    'fired_timestamp', 'momentum', 'breakout_type', 'highest_tf'
+    'fired_timestamp', 'momentum', 'breakout_type', 'highest_tf', 'Potency_Score'
 ]
 
 
@@ -34,8 +48,10 @@ for tf in timeframes:
     select_cols.extend([
         f'KltChnl.lower{tf}', f'KltChnl.upper{tf}', f'BB.lower{tf}', f'BB.upper{tf}',f'DonchCh20.Upper{tf}', f'DonchCh20.Lower{tf}',
         f'KltChnl.lower[1]{tf}', f'KltChnl.upper[1]{tf}', f'BB.lower[1]{tf}', f'BB.upper[1]{tf}',f'DonchCh20.Upper[1]{tf}', f'DonchCh20.Lower[1]{tf}',        
-        f'ATR{tf}', f'SMA20{tf}', f'volume{tf}', f'average_volume_10d_calc{tf}', f'Value.Traded{tf}'
+        f'ATR{tf}', f'SMA20{tf}', f'volume{tf}', f'average_volume_10d_calc{tf}', f'close{tf}', f'Value.Traded{tf}'
     ])
+
+
 
 def run_intraday_scan(settings, cookies):
    
@@ -60,29 +76,29 @@ def run_intraday_scan(settings, cookies):
     donchian_break = [Or(
         col(f'DonchCh20.Upper{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
         col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}'), 
-        col(f'high{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
-        col(f'low{tf}') < col(f'DonchCh20.Lower[1]{tf}'),
-        col(f'high') > col(f'DonchCh20.Upper[1]{tf}'),
-        col(f'low') < col(f'DonchCh20.Lower[1]{tf}')
+        # col(f'close{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
+        # col(f'close{tf}') < col(f'DonchCh20.Lower[1]{tf}'),
+        # col(f'close') > col(f'DonchCh20.Upper[1]{tf}'),
+        # col(f'close') < col(f'DonchCh20.Lower[1]{tf}')
     ) for tf in timeframes]
 
     squeeze_breakout = [Or(
         And(
-            # col(f'BB.upper[1]{tf}') < col(f'KltChnl.upper[1]{tf}'),
+            col(f'BB.upper[1]{tf}') < col(f'KltChnl.upper[1]{tf}'),
            Or(  col(f'BB.upper{tf}') >= col(f'KltChnl.upper{tf}'),
-                col(f'high{tf}') > col(f'BB.upper{tf}'),
-                col(f'high{tf}') > col(f'KltChnl.upper{tf}'),
-                col(f'high') > col(f'BB.upper[1]{tf}'),
-                col(f'high') > col(f'KltChnl.upper[1]{tf}')
+                # col(f'close{tf}') > col(f'BB.upper{tf}'),
+                # col(f'close{tf}') > col(f'KltChnl.upper{tf}'),
+                # col(f'close') > col(f'BB.upper[1]{tf}'),
+                # col(f'close') > col(f'KltChnl.upper[1]{tf}')
            )
         ),
         And(
-            # col(f'BB.lower[1]{tf}') > col(f'KltChnl.lower[1]{tf}'),
+            col(f'BB.lower[1]{tf}') > col(f'KltChnl.lower[1]{tf}'),
             Or( col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),            
-                col(f'low{tf}') < col(f'BB.lower{tf}'),
-                col(f'low{tf}') < col(f'KltChnl.lower{tf}'),
-                col(f'low') < col(f'BB.lower[1]{tf}'),
-                col(f'low') < col(f'KltChnl.lower[1]{tf}')
+                # col(f'close{tf}') < col(f'BB.lower{tf}'),
+                # col(f'close{tf}') < col(f'KltChnl.lower{tf}'),
+                # col(f'close') < col(f'BB.lower[1]{tf}'),
+                # col(f'close') < col(f'KltChnl.lower[1]{tf}')
             ),
         ),
          
@@ -94,9 +110,9 @@ def run_intraday_scan(settings, cookies):
     vol_spike = [And(
         col(f'volume{tf}')> VOLUME_THRESHOLDS.get(tf,50000), 
         # col(f'average_volume_10d_calc{tf}') > 50000,
-        Or (col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), 1.5),
-            col(f'relative_volume_10d_calc{tf}') > 1.5,
-            col('relative_volume_intraday|5') >1.5
+        Or (col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), settings['RVOL_threshold']),
+            col(f'relative_volume_10d_calc{tf}') > settings['RVOL_threshold'],
+            col('relative_volume_intraday|5') >settings['RVOL_threshold']
             ),
         
     )for tf in timeframes]
@@ -112,11 +128,14 @@ def run_intraday_scan(settings, cookies):
         _, df = query.get_scanner_data(cookies=cookies)
         if df is not None:
             df = df.fillna(value=pd.NA).replace({pd.NA: None})
+            # ROBUST CONVERSION: Convert pandas NaN, numpy NaN, and Inf to Python None
+            df = df.replace([float('inf'), float('-inf')], None).where(pd.notnull(df), None)
         print(f"Scan completed  size: {len(df)}") 
         
 
         if df is not None and not df.empty:
             df = identify_combined_breakout_timeframes(df, timeframes)
+            df = calculate_potency_score(df, tf_order_map)
             # all_results = pd.concat( [all_results ,df])
             
         else :
@@ -141,6 +160,8 @@ def run_intraday_scan(settings, cookies):
     df_New =df.drop_duplicates(subset=['name']).copy()
     # df_all = df_all.rename(columns={'timeframe': 'highest_tf'})
     # PRINT SIZE OF df_all
+    # NEW FILTER: Only keep records that are actual breakouts ('Both', 'Squeeze', 'Donchian')
+    df_New = df_New[df_New['breakout_type'] != 'None'].copy()
     if df_New.empty:
         print(f"===========NO NEW BREAKOUT =================================")
     
@@ -156,7 +177,8 @@ def run_intraday_scan(settings, cookies):
     df_New['momentum'] = df_New['MACD.hist'].apply(lambda x: 'Bullish' if x > 0 else ('Bearish' if x < 0 else 'Neutral'))
 
     # print(df_all.columns)
-    
+    # Second ROBUST CONVERSION: Ensure final Potency_Score (which might be NaN) is converted before UI columns are selected
+    df_New = df_New.replace([float('inf'), float('-inf')], None).where(pd.notnull(df_New), None)
 
     # Filter the DataFrame to include only the columns needed by the UI
     df_filtered = df_New[[col for col in UI_COLUMNS if col in df_New.columns]].copy()
@@ -244,6 +266,66 @@ def get_highest_timeframe(breakout_tfs_str, order_map, suffix_map):
     return highest_tf_suffix
 
 
+def calculate_potency_score(df: pd.DataFrame, tf_order_map: dict) -> pd.DataFrame:
+    """
+    Calculates a Potency Score for each stock based on RVOL,
+    Highest Timeframe, and Breakout Type.
+    """
+    if df.empty:
+        return df
+
+ 
+    ##for every row sum all columns ratio df[f'volume{tf}']/ df[f'average_volume_10d_calc{tf}'] in volumeScore
+    df['volume_score'] = 0.0
+    for tf in timeframes:
+        # Ensure columns exist before performing operations
+        if f'volume{tf}' in df.columns and f'average_volume_10d_calc{tf}' in df.columns:
+            # Replace 0 in average_volume_10d_calc to avoid division by zero
+            safe_avg_vol = df[f'average_volume_10d_calc{tf}'].replace(0, 1)
+            df['volume_score'] += (df[f'volume{tf}'] / safe_avg_vol)*tf_order_map.get(tf, 0) 
+        else:
+            print(f"Warning: Missing volume data for timeframe {tf}. Skipping volume score calculation for this TF.")
+
+    # print(" VOLUME SCORE ")
+    # print(df[['volume_score']])
+    # Normalize volume_score if needed, or use it directly
+    # For now, let's use it directly as a sum
+    df['RVOL_Score'] = df['volume_score'] / len(timeframes) # Average RVOL across all TFs
+    
+    # 1. Breakout Type Score
+    # Map the breakout type to a score, defaulting to 0
+    df['Breakout_Type_Score'] = df['breakout_type'].map(BREAKOUT_TYPE_SCORES).fillna(0)
+
+    # 2. Highest Timeframe Order Score
+    # Map the display name (e.g., '15m') back to the suffix (e.g., '|15')
+    # and then get the order from tf_order_map. tf_suffix_map is available globally.
+    def get_tf_order(tf_display_name):
+        tf_suffix = tf_suffix_map.get(tf_display_name)
+        # tf_order_map is passed as an argument
+        return tf_order_map.get(tf_suffix, 0)
+
+    df['TF_Order'] = df['highest_tf'].apply(get_tf_order)
+
+    # 3. Potency Score Calculation
+    # Potency_Score = (2.0 * RVOL) + (1.5 * TF_Order) + (1.0 * Breakout_Type_Score)
+    df['Potency_Score'] = (
+        (df['relative_volume_10d_calc'] * POTENCY_WEIGHTS['RVOL']) +
+        (df['TF_Order'] * POTENCY_WEIGHTS['TF_Order']) +
+        (df['Breakout_Type_Score'] * POTENCY_WEIGHTS['Breakout_Type_Score']) +
+        (df['RVOL_Score'] * 0.5) 
+    )
+
+    # Sort by Potency Score, descending
+    df = df.sort_values(by='Potency_Score', ascending=False)
+
+    # Keep only 2 decimal places for display purposes
+    df['Potency_Score'] = df['Potency_Score'].round(2)
+
+    # Drop intermediate columns
+    df = df.drop(columns=['Breakout_Type_Score', 'TF_Order'], errors='ignore')
+
+    return df
+
 #Add API to SAVE complete scan results into MONGO DB (ScannerDB) and RETRIEVE when APP re-starts
 from pymongo import MongoClient
 import os
@@ -321,6 +403,11 @@ def load_scan_results() -> pd.DataFrame:
         df = df.drop(columns=['_id'])
     
     # print(f"===============================================================================Loaded {len(df)} records from MongoDB.")
+    
+    # Sort by the new Potency_Score before returning
+    if 'Potency_Score' in df.columns:
+         df = df.sort_values(by='Potency_Score', ascending=False)
+         
     return df
     
  

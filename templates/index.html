@@ -253,35 +253,11 @@ const formattedTime = date.toTimeString().slice(0, 8);
                 breakoutHtml += `Time: ${formatTime(d.fired_timestamp)} (${timeAgo(d.fired_timestamp)})<br/>`;
             }
             
-            return `<strong>${ticker}</strong><br/>` + breakoutHtml + momentumHtml + `RVOL: ${d.relative_volume_10d_calc.toFixed(2)}`;
+            // --- ADDED: Potency Score to Tooltip ---
+            const potencyScoreHtml = d.Potency_Score !== undefined ? `Potency Score: <strong>${d.Potency_Score.toFixed(2)}</strong><br/>` : '';
+            
+            return `<strong>${ticker}</strong><br/>` + breakoutHtml + momentumHtml + potencyScoreHtml + `RVOL: ${d.relative_volume_10d_calc.toFixed(2)}`;
         }
-        // function getTooltipHtml(d, type) {
-        //     const momentumHtml = `Momentum: <span style="color: ${getCellColor(d)};">${d.momentum}</span><br/>`;
-        //     let squeezeHtml = '';
-            
-        //     // Determine ticker/name for display
-        //     const ticker = d.ticker ? d.ticker.replace('NSE:', '') : d.name ? d.name.replace('NSE:', '') : 'N/A';
-            
-        //     // Ensure Breakout_TFs is always treated as a string
-        //     const breakoutTFs = Array.isArray(d.Breakout_TFs) ? d.Breakout_TFs.join(', ') : d.Breakout_TFs;
-
-        //     if (type === 'in_squeeze') {
-        //         const strengthHtml = d.squeeze_strength !== 'N/A' ? ` (${d.squeeze_strength})` : '';
-        //         squeezeHtml = `Squeeze on ${d.count} TFs (${breakoutTFs})${strengthHtml}<br/>`;
-        //     } else if (type === 'fired') {
-        //         const prevVol = d.previous_volatility ? d.previous_volatility.toFixed(2) : 'N/A';
-        //         const currVol = d.current_volatility ? d.current_volatility.toFixed(2) : 'N/A';
-        //         const countText = d.count > 1 ? `on ${d.count} TFs` : '';
-        //         squeezeHtml = `Fired ${countText} (Highest: ${breakoutTFs})<br/>` +
-        //                       `Volatility: <strong style="color: #10b981;">${prevVol} &rarr; ${currVol}</strong><br/>`;
-        //     } else if (type === 'all_fired') {
-        //         const countText = d.count > 1 ? `on ${d.count} TFs` : '';
-        //         squeezeHtml = `Fired ${countText} (TF: ${d.fired_timeframe})<br/>` +
-        //                       `Time: ${formatTimeAgo(d.fired_timestamp)}<br/>`;
-        //     }
-            
-        //     return `<strong>${ticker}</strong><br/>` + squeezeHtml + momentumHtml + `RVOL: ${d.relative_volume_10d_calc.toFixed(2)}`;
-        // }
 
         function renderCells(selection, type) {
             const enterCells = selection.enter().append("div").attr("class", "cell")
@@ -305,8 +281,9 @@ const formattedTime = date.toTimeString().slice(0, 8);
             const updateCells = enterCells.merge(selection);
             updateCells.style("background-color", d => getCellColor(d));
             updateCells.select(".stock-logo").attr("src", d => d.logoid ? `https://s3-symbol-logo.tradingview.com/${d.logoid}.svg` : '').style("display", d => d.logoid ? 'block' : 'none');
-            updateCells.select(".stock-ticker").text(d => d.name.replace('NSE:', ''));
-            updateCells.select(".stock-info").text(d => `RVOL: ${d.relative_volume_10d_calc.toFixed(2)}`);
+            updateCells.select(".stock-ticker").text(d => d.name.replace('NSE:', '')); 
+             
+            updateCells.select(".stock-info").text(d =>  d.Potency_Score !== null && d.Potency_Score !== undefined ? `Potency: ${d.Potency_Score.toFixed(1)}` : `RVOL: ${d.relative_volume_10d_calc.toFixed(2)}`);
             updateCells.select(".breakout-badge").text(d => d.breakout_type ? d.breakout_type.charAt(0) : '');
             
             if (type === 'all_fired') {
@@ -342,7 +319,8 @@ const formattedTime = date.toTimeString().slice(0, 8);
             updateGroups.select('h2').text(d => `Fired on ${d[0]} (${d[1].length})`);
 
             updateGroups.each(function([tf, stocks]) {
-                const sortedStocks = stocks.sort((a,b) => b.relative_volume_10d_calc - a.relative_volume_10d_calc);
+                // --- MODIFIED: Sort by Potency_Score descending ---
+                const sortedStocks = stocks.sort((a,b) => (b.Potency_Score || 0) - (a.Potency_Score || 0));
                 const cells = d3.select(this).select('.grid-container').selectAll('.cell').data(sortedStocks, d => d.name);
                 cells.exit().remove();
                 renderCells(cells, 'fired');
@@ -387,6 +365,7 @@ const formattedTime = date.toTimeString().slice(0, 8);
 
             updateGroups.each(function([group, stocks]) {
                 // Sort by fired timestamp (most recent first)
+                // Note: Keeping sort by timestamp for the historical "All Breakouts" list.
                 const sortedStocks = stocks.sort((a, b) => new Date(b.fired_timestamp) - new Date(a.fired_timestamp));
 
                 // Deduplicate stocks within the same time group, keeping the most recent one
@@ -549,15 +528,21 @@ const formattedTime = date.toTimeString().slice(0, 8);
         const marketToggle = document.getElementById('market-toggle');
         const marketInput = document.getElementById('market');
         const exchangeInput = document.getElementById('exchange');
+        const min_value_traded = document.getElementById('min_value_traded');
+        const min_volume = document.getElementById('min_volume');
 
         const marketPresets = {
             india: {
                 market: "india",
-                exchange: "NSE"
+                exchange: "NSE",
+                min_value_traded: 1000000,
+                min_volume: 50000,
             },
             america: {
                 market: "america",
-                exchange: "NASDAQ,NYSE,AMEX"
+                exchange: "NASDAQ,NYSE,AMEX",
+                min_value_traded: 10000000,
+                min_volume: 10000,
             }
         };
 
@@ -565,6 +550,8 @@ const formattedTime = date.toTimeString().slice(0, 8);
             const preset = isAmerica ? marketPresets.america : marketPresets.india;
             marketInput.value = preset.market;
             exchangeInput.value = preset.exchange;
+            min_value_traded.value = preset.min_value_traded;
+            min_volume.value = preset.min_volume;
         }
 
         marketToggle.addEventListener('change', (event) => {

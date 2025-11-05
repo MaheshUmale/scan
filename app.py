@@ -13,14 +13,15 @@ app = Flask(__name__)
 
 # --- Global state for scanner settings ---
 scanner_settings = {
-    # "market": "india",
-    # "exchange": "NSE",
-    "market" : "america",
-    "exchange": ["NASDAQ","NYSE","AMEX"],
+    "market": "india",
+    "exchange": ["NSE"],
+    # "market" : "america",
+    # "exchange": ["NASDAQ","NYSE","AMEX"],
     "min_price": 2,
     "max_price": 100000,
     "min_volume": 500000,
-    "min_value_traded": 1000000
+    "min_value_traded": 1000000,
+    "RVOL_threshold": 2.0,
 }
 
 cookies = None
@@ -128,7 +129,7 @@ def update_settings():
                     pass
     return jsonify({"status": "success", "settings": scanner_settings})
 
-@app.route('/manual_scan', methods=['POST'])
+@app.route('/manual_scan', methods=['POST','GET'])
 def manual_scan():
     """Triggers a manual scan and updates the app state."""
     print("Manual scan triggered.")
