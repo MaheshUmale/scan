@@ -43,12 +43,12 @@ UI_COLUMNS = [
 
 
 # Construct select columns for all timeframes
-select_cols = ['name', 'logoid', 'close', 'MACD.hist','relative_volume_10d_calc', 'beta_1_year']
+select_cols = ['name', 'logoid', 'close','relative_volume_10d_calc', 'beta_1_year']
 for tf in timeframes:
     select_cols.extend([
         f'KltChnl.lower{tf}', f'KltChnl.upper{tf}', f'BB.lower{tf}', f'BB.upper{tf}',f'DonchCh20.Upper{tf}', f'DonchCh20.Lower{tf}',
         f'KltChnl.lower[1]{tf}', f'KltChnl.upper[1]{tf}', f'BB.lower[1]{tf}', f'BB.upper[1]{tf}',f'DonchCh20.Upper[1]{tf}', f'DonchCh20.Lower[1]{tf}',
-        f'ATR{tf}', f'SMA20{tf}', f'volume{tf}', f'average_volume_10d_calc{tf}', f'close{tf}', f'Value.Traded{tf}'
+        f'ATRP{tf}', f'SMA20{tf}', f'volume{tf}', f'average_volume_10d_calc{tf}', f'close{tf}', f'Value.Traded{tf}',f'MACD.hist{tf}',f'MACD.hist[1]{tf}'
     ])
 
 
@@ -69,87 +69,81 @@ def run_intraday_scan(settings, cookies, db_name):
         # col('exchange').isin(settings['exchange']),
         col('close').between(settings['min_price'], settings['max_price']),
         col('active_symbol') == True,
-        col('Value.Traded|5') > settings['min_value_traded'],
+        col('Value.Traded|5') > settings['min_value_traded'],        
+        # col('relative_volume_intraday|5') >settings['RVOL_threshold']
     ]
 
-    # # for tf in timeframes:
-    # donchian_break = [Or(
-    #     col(f'DonchCh20.Upper{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
-    #     col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}'),
-
-    # ) for tf in timeframes]
-
-    # squeeze_breakout = [Or(
-    #     And(
-    #         col(f'BB.upper[1]{tf}') < col(f'KltChnl.upper[1]{tf}'),
-    #        Or(  col(f'BB.upper{tf}') >= col(f'KltChnl.upper{tf}'),
-    #        )
-    #     ),
-    #     And(
-    #         col(f'BB.lower[1]{tf}') > col(f'KltChnl.lower[1]{tf}'),
-    #         Or( col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),
-    #         ),
-    #     ),
-
-
-    # )for tf in timeframes]
-
-
-
-    # vol_spike = [And(
-    #     col(f'volume{tf}')> VOLUME_THRESHOLDS.get(tf,50000),
-
-    #     Or (col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), settings['RVOL_threshold']),
-    #         col(f'relative_volume_10d_calc{tf}') > settings['RVOL_threshold'],
-    #         col('relative_volume_intraday|5') >settings['RVOL_threshold']
-    #         ),
-
-    # )for tf in timeframes]
-
-    compositeFilter = [
-
+    trendFilter   = [Or(
         And(
+        # col(f'EMA5{tf}')  > col(f'EMA20{tf}'),
+        col(f'EMA20{tf}') > col(f'EMA200{tf}'), 
+        col(f'close{tf}') > col(f'EMA20{tf}'),
+        # col(f'EMA5{tf}') > col(f'SMA5{tf}'),
 
-        #VOL SPIKE
-        Or ( #Any type of volume spike
-            col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), settings['RVOL_threshold']),
-            col(f'volume{tf}')> VOLUME_THRESHOLDS.get(tf,50000),
-            col(f'relative_volume_10d_calc{tf}') > settings['RVOL_threshold'],
-            col('relative_volume_intraday|5') >settings['RVOL_threshold']
-            ),
+        # col(f'EMA5{tf}') > col(f'EMA200{tf}'),        
+        ),
+        And(
+        # col(f'EMA5{tf}')  < col(f'EMA20{tf}'),
+        col(f'EMA20{tf}') < col(f'EMA200{tf}'),        
+        col(f'close{tf}') < col(f'EMA20{tf}'),
+        # col(f'EMA5{tf}') < col(f'SMA5{tf}'),
+        # col(f'EMA5{tf}') < col(f'EMA200{tf}'),        
+        ),
 
+        )for tf in timeframes]
+        
+        
+    # for tf in timeframes:
+    donchian_break = [Or(
+        col(f'DonchCh20.Upper{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
+        col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}'),
 
-        Or( #Any type of break
-            ##BB BREAK upper
-            And(
-                col(f'BB.upper[1]{tf}') < col(f'KltChnl.upper[1]{tf}'),
-                col(f'BB.upper{tf}') >= col(f'KltChnl.upper{tf}'),
+    ) for tf in timeframes]
 
-            ),
-            ##BB BREAK lower
-            And(
-                col(f'BB.lower[1]{tf}') > col(f'KltChnl.lower[1]{tf}'),
-                col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),
-
-            ),
-            ##DC BREAK upper
-            col(f'DonchCh20.Upper{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
-            ##DC BREAK lower
-            col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}'),
-
-
-            ),
-
+    squeeze_breakout = [Or(
+        And(
+            col(f'BB.upper[1]{tf}') < col(f'KltChnl.upper[1]{tf}'),
+            col(f'BB.upper{tf}') >= col(f'KltChnl.upper{tf}'),
+           
+        ),
+        And(
+            col(f'BB.lower[1]{tf}') > col(f'KltChnl.lower[1]{tf}'),
+            col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),
+            
+        ),
 
 
         )for tf in timeframes]
 
 
 
+    vol_spike = [Or(
+        # col(f'volume{tf}')> VOLUME_THRESHOLDS.get(tf,50000),
 
-    filters = base_filters + [*compositeFilter] # + [Or(And (*vol_spike,*donchian_break), And(*vol_spike, *squeeze_breakout))]  ###+ [*compositeFilter] #
+         
+            col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), settings['RVOL_threshold']-1),
+            col(f'relative_volume_10d_calc{tf}') > settings['RVOL_threshold'],
+            col('relative_volume_intraday|5') >settings['RVOL_threshold']
+            
+
+    )for tf in timeframes]
+
+ 
+ 
+
+
+
+
+    filters = [And(*base_filters )]
+    filters =filters + [And(*vol_spike )]
+    # filters =filters + [And(*trendFilter)]
+    # filters =filters + [And(*donchian_break )]
+    # filters =filters + [And(*squeeze_breakout )]
+    filters =filters + [Or(*squeeze_breakout,*donchian_break, *trendFilter)]
+    # +
     query = Query().select(*select_cols).where2(And(*filters)).set_markets(settings['market']).limit(1000).set_property('symbols', {'query': {}})
-
+    # print(query)
+    print(settings['market'])
     # query.set_property('symbols', {'query': {'types': ['stock', 'fund', 'dr']}})
 
     try:
@@ -204,7 +198,7 @@ def run_intraday_scan(settings, cookies, db_name):
     df_New['count'] = 1
     df_New['previous_volatility'] = 0
     df_New['current_volatility'] = 0
-    df_New['momentum'] = df_New['MACD.hist'].apply(lambda x: 'Bullish' if x > 0 else ('Bearish' if x < 0 else 'Neutral'))
+    df_New['momentum'] = df_New['momentum_score'].apply(lambda x: 'Bullish' if x > 0 else ('Bearish' if x < 0 else 'Neutral'))
 
     # print(df_all.columns)
     # Second ROBUST CONVERSION: Ensure final Potency_Score (which might be NaN) is converted before UI columns are selected
@@ -216,6 +210,8 @@ def run_intraday_scan(settings, cookies, db_name):
     return {"fired": df_filtered}
 
 import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+import numpy as np
 
 def identify_combined_breakout_timeframes(df: pd.DataFrame, timeframes: list) -> pd.DataFrame:
     """
@@ -316,11 +312,86 @@ def calculate_potency_score(df: pd.DataFrame, tf_order_map: dict) -> pd.DataFram
         else:
             print(f"Warning: Missing volume data for timeframe {tf}. Skipping volume score calculation for this TF.")
 
+    df['RVOL_Score'] = df['volume_score'] / len(timeframes) # Average RVOL across all TFs
+
+
+    # Check which parts are NaN
+    # print("Is momentum_score NaN?", df['momentum_score'].isna().any())
+    # print(f"Is MACD.hist{tf} NaN?", df[f'MACD.hist{tf}'].isna().any())
+    df['momentum_score'] =0.0
+
+    for tf in timeframes:
+        # Ensure columns exist before performing operations
+        if f'MACD.hist{tf}'   in df.columns and f'MACD.hist[1]{tf}'   in df.columns:
+            # Replace 0 in average_volume_10d_calc to avoid division by zero
+            
+            # df['momentum_score'] += df[f'MACD.hist{tf}']  *tf_order_map.get(tf, 0)
+            value_to_add =(df[f'MACD.hist{tf}'].fillna(0)  -df[f'MACD.hist[1]{tf}'].fillna(0) ) /tf_order_map.get(tf, 1)
+            df['momentum_score'] = df['momentum_score'].add(value_to_add, fill_value=0)
+        else:
+            print(f"Warning: Missing volume data for timeframe {tf}. Skipping volume score calculation for this TF.")
+    print(df[['momentum_score']])
+
+    #     # Get the highest value
+    # highest_score = df['momentum_score'].max()
+
+    # # Get the lowest value
+    # lowest_score = df['momentum_score'].min()
+
+    # # Print the results
+    # print(f"The highest momentum score is: {highest_score}")
+    # print(f"The lowest momentum score is: {lowest_score}")
+
+
+    # # 2. Calculate the normalized momentum score
+    # # It's safest to create a new temporary column for the normalized values first
+    # df['momentum_score_normalized'] = (df['momentum_score'] - lowest_score) / (highest_score - lowest_score)
+
+    # # Optional: Verify the new normalized range (should be ~0.0 to ~1.0)
+    # print(f"Normalized Min: {df['momentum_score_normalized'].min()}")
+    # print(f"Normalized Max: {df['momentum_score_normalized'].max()}")
+
+    # print(df['momentum_score_normalized'])
+
+
+    # # Create an instance of the scaler
+    # scaler = MinMaxScaler()
+
+    # # The scaler expects a 2D array, so we reshape the single column
+    # # We have to drop NaNs first if you haven't handled them already
+    # momentum_data = df['momentum_score'].dropna().values.reshape(-1, 1)
+
+    # # Fit and transform the data (this modifies the original values in place or creates new ones)
+    # # This example creates a new column with the scaled data:
+    # df['momentum_score_normalized_skl'] = np.nan # Initialize the column
+    # df.loc[df['momentum_score'].notna(), 'momentum_score_normalized_skl'] = scaler.fit_transform(momentum_data)
+
+
+    # print(f"Normalized Min: {df['momentum_score_normalized_skl'].min()}")
+    # print(f"Normalized Max: {df['momentum_score_normalized_skl'].max()}")
+ 
+    # print(df[['momentum_score_normalized_skl']])
+
+
+
     # print(" VOLUME SCORE ")
     # print(df[['volume_score']])
     # Normalize volume_score if needed, or use it directly
     # For now, let's use it directly as a sum
-    df['RVOL_Score'] = df['volume_score'] / len(timeframes) # Average RVOL across all TFs
+
+
+    df['ATR_score'] = 0.0
+    for tf in timeframes:
+        # Ensure columns exist before performing operations
+        if f'ATRP{tf}' in df.columns  :
+            
+            df['ATR_score'] += (df[f'ATRP{tf}'] )
+        else:
+            print(f"Warning: Missing volume data for timeframe {tf}. Skipping volume score calculation for this TF.")
+
+    # df['RVOL_Score'] = df['volume_score'] / len(timeframes) # Average RVOL across all TFs
+
+
 
     # 1. Breakout Type Score
     # Map the breakout type to a score, defaulting to 0
@@ -342,7 +413,9 @@ def calculate_potency_score(df: pd.DataFrame, tf_order_map: dict) -> pd.DataFram
         (df['relative_volume_10d_calc'] * POTENCY_WEIGHTS['RVOL']) +
         (df['TF_Order'] * POTENCY_WEIGHTS['TF_Order']) +
         (df['Breakout_Type_Score'] * POTENCY_WEIGHTS['Breakout_Type_Score']) +
-        (df['RVOL_Score'] * 0.5)
+        (df['RVOL_Score'] * 0.5)+
+        abs((df['momentum_score'] * 0.5))+
+        (df['ATR_score']  )
     )
 
     # Sort by Potency Score, descending

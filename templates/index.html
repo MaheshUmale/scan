@@ -84,7 +84,6 @@
                 </div>
                 <form id="settings-form">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <input type="hidden" id="market" name="market">
                         <div class="col-span-2">
                             <label class="block text-sm font-medium text-gray-300">Market Presets</label>
                             <div class="mt-2 flex items-center">
@@ -95,6 +94,14 @@
                                 </label>
                                 <span class="text-sm font-medium text-gray-400 ml-3">America</span>
                             </div>
+                        </div>
+                        <div class="col-span-2">
+                            <label for="market" class="block text-sm font-medium text-gray-300">Market</label>
+                            <textarea id="market" name="market" rows="2" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
+                        </div>
+                        <div class="col-span-2">
+                            <label for="exchange" class="block text-sm font-medium text-gray-300">Exchange (comma-separated)</label>
+                            <textarea id="exchange" name="exchange" rows="3" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
                         </div>
                         <div>
                             <label for="min_price" class="block text-sm font-medium text-gray-300">Min Price</label>
@@ -111,14 +118,6 @@
                         <div>
                             <label for="min_value_traded" class="block text-sm font-medium text-gray-300">Min Value Traded</label>
                             <input type="number" id="min_value_traded" name="min_value_traded" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                        </div>
-                        <div>
-                            <label for="RVOL_threshold" class="block text-sm font-medium text-gray-300">RVOL Threshold</label>
-                            <input type="number" id="RVOL_threshold" name="RVOL_threshold" step="0.1" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
-                        </div>
-                        <div>
-                            <label for="beta_1_year" class="block text-sm font-medium text-gray-300">Beta (1-year)</label>
-                            <input type="number" id="beta_1_year" name="beta_1_year" step="0.1" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
                     </div>
                     <div class="mt-6 flex justify-end space-x-3">
@@ -282,9 +281,14 @@ const formattedTime = date.toTimeString().slice(0, 8);
             const updateCells = enterCells.merge(selection);
             updateCells.style("background-color", d => getCellColor(d));
             updateCells.select(".stock-logo").attr("src", d => d.logoid ? `https://s3-symbol-logo.tradingview.com/${d.logoid}.svg` : '').style("display", d => d.logoid ? 'block' : 'none');
-            updateCells.select(".stock-ticker").text(d => d.name.replace('NSE:', '')); 
-             
-            updateCells.select(".stock-info").text(d =>  d.Potency_Score !== null && d.Potency_Score !== undefined ? `Potency: ${d.Potency_Score.toFixed(1)}` : `RVOL: ${d.relative_volume_10d_calc.toFixed(2)}`);
+            updateCells.select(".stock-ticker").text(d => d.name.replace('NSE:', ''));  
+            updateCells.select(".stock-info").text(d => {
+                const score = d.Potency_Score; // Check on d.Potency_Score, not d.data.Potency_Score
+                const potencyText = (score === null || isNaN(score) || score === undefined) ? 'P: N/A' : `P: ${score.toFixed(1)}`;
+                const rvol = d.relative_volume_10d_calc 
+                const rvolText = (rvol === null || isNaN(rvol) || rvol === undefined) ? 'RVOL: N/A' : `RVOL: ${rvol.toFixed(1)}`;
+                return `${potencyText} |  ${rvolText}`;
+            });
             updateCells.select(".breakout-badge").text(d => d.breakout_type ? d.breakout_type.charAt(0) : '');
             
             if (type === 'all_fired') {
@@ -423,7 +427,13 @@ const formattedTime = date.toTimeString().slice(0, 8);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                const data = await response.json();
+                
+                // --- JSON SANITIZATION FOR NaN ---
+                const rawText = await response.text();
+                const sanitizedText = rawText.replace(/NaN/g, 'null').replace(/-Infinity/g, 'null').replace(/Infinity/g, 'null');
+                const data = JSON.parse(sanitizedText);
+                // --- END SANITIZATION ---
+                
                 updateDashboard(data);
             } catch (error) {
                 console.error("Failed to fetch latest data:", error);
@@ -447,7 +457,14 @@ const formattedTime = date.toTimeString().slice(0, 8);
                 try {
                     const response = await fetch('/get_all_fired_events');
                     if (!response.ok) throw new Error('Failed to fetch');
-                    const data = await response.json();
+                    
+                // --- JSON SANITIZATION FOR NaN ---
+                const rawText = await response.text();
+                const sanitizedText = rawText.replace(/NaN/g, 'null').replace(/-Infinity/g, 'null').replace(/Infinity/g, 'null');
+                const data = JSON.parse(sanitizedText);
+                // --- END SANITIZATION ---
+                
+
                     renderAllFiredList(data);
                     isAllFiredLoaded = true;
                 } catch (error) {
@@ -527,17 +544,21 @@ const formattedTime = date.toTimeString().slice(0, 8);
         // --- Settings Modal Logic ---
 
         const marketToggle = document.getElementById('market-toggle');
+        const marketInput = document.getElementById('market');
+        const exchangeInput = document.getElementById('exchange');
         const min_value_traded = document.getElementById('min_value_traded');
         const min_volume = document.getElementById('min_volume');
 
         const marketPresets = {
             india: {
                 market: "india",
+                exchange: "NSE",
                 min_value_traded: 1000000,
                 min_volume: 50000,
             },
             america: {
                 market: "america",
+                exchange: "NASDAQ,NYSE,AMEX",
                 min_value_traded: 10000000,
                 min_volume: 10000,
             }
@@ -545,7 +566,8 @@ const formattedTime = date.toTimeString().slice(0, 8);
 
         function updateMarketFields(isAmerica) {
             const preset = isAmerica ? marketPresets.america : marketPresets.india;
-            settingsForm.elements['market'].value = preset.market;
+            marketInput.value = preset.market;
+            exchangeInput.value = preset.exchange;
             min_value_traded.value = preset.min_value_traded;
             min_volume.value = preset.min_volume;
         }

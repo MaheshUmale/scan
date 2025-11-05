@@ -18,15 +18,17 @@ with open('config.json', 'r') as f:
 
 # --- Global state for scanner settings ---
 scanner_settings = {
-    "market": "india",
-    "exchange": ["NSE"],
+    # "market": "india",
+    # "exchange": ["NSE"],
+    "market": "america",
+    "exchange": ["NASDAQ", "NYSE", "AMEX"],
     "min_price": 2,
     "max_price": 100000,
     "min_volume": 500000,
     "min_value_traded": 1000000,
     "RVOL_threshold": config['scanner_settings']['RVOL_threshold'],
     "beta_1_year": config['scanner_settings']['beta_1_year'],
-    "db_name": config['database']['india']
+    "db_name": config['database']['america']
 }
 
 cookies = None
@@ -150,16 +152,86 @@ def manual_scan():
 
     return jsonify({"status": "success", "message": "Manual scan completed."})
 
-def is_market_open():
-    """Checks if the Indian stock market is currently within trading hours (9:15 AM to 3:30 PM IST)."""
-    # IST = pytz.timezone('Asia/Kolkata')
-    # now_ist = datetime.now(IST)
-    # market_start = time(9, 15)
-    # market_end = time(15, 30)
+# def is_market_open():
+#     """Checks if the Indian stock market is currently within trading hours (9:15 AM to 3:30 PM IST)."""
+#     # IST = pytz.timezone('Asia/Kolkata')
+#     # now_ist = datetime.now(IST)
+#     # market_start = time(9, 15)
+#     # market_end = time(15, 30)
 
-    # # Check if the current time is a weekday and within the trading window
-    # return (now_ist.weekday() < 5) and (market_start <= now_ist.time() <= market_end)
-    return True
+#     # # Check if the current time is a weekday and within the trading window
+#     # return (now_ist.weekday() < 5) and (market_start <= now_ist.time() <= market_end)
+#     return True
+
+import datetime as dt
+from datetime import timedelta
+import pytz
+
+def get_market_status():
+    """
+    Checks the Indian stock market status and calculates time to sleep.
+    Returns a dictionary with status (bool) and timeToSleep (int in seconds).
+    """
+    # Indian Stock Market trading hours
+    market_open = dt.time(9, 15)
+    market_close = dt.time(15, 30)
+
+    # 2025 Indian stock market holidays (referencing NSE data)
+    # shows some holidays but a full list is recommended for production.
+    holidays = [
+        dt.date(2025, 1, 26),  # Republic Day
+        dt.date(2025, 2, 26),  # Mahashivratri
+        dt.date(2025, 3, 14),  # Holi
+        dt.date(2025, 3, 31),  # Mahavir Jayanti
+        dt.date(2025, 4, 1),  # Annual Bank Closing
+        dt.date(2025, 4, 18),  # Good Friday
+        dt.date(2025, 5, 1),  # Maharashtra Day
+        dt.date(2025, 8, 15),  # Independence Day
+        dt.date(2025, 10, 2),  # Mahatma Gandhi Jayanti
+        dt.date(2025, 10, 24),  # Diwali
+        dt.date(2025, 11, 5),                       # 05/11/2025	Wednesday	Prakash Gurpurb Sri Guru Nanak Dev
+                                #14	25/12/2025	Thursday	Christmas
+        dt.date(2025, 12, 25) # Christmas
+    ]
+
+    # Get current time in IST
+    ist = pytz.timezone('Asia/Kolkata')
+    now = dt.datetime.now(ist)
+    print(now.date())
+
+    # Check for holidays and weekends
+    if now.date() in holidays or now.weekday() >= 5:  # 5=Saturday, 6=Sunday
+        print(" HOLIDAY or WEEKEND ")
+        return calculate_time_to_open(now, market_open, holidays)
+
+    # Check if market is open
+    if market_open <= now.time() <= market_close:
+        return {'status': True, 'timeToSleep': 60}
+    else:
+        return calculate_time_to_open(now, market_open, holidays)
+
+def calculate_time_to_open(now, market_open, holidays):
+    """
+    Helper function to calculate time to next market open.
+    """
+    next_market_day = now.date()
+    # Find the next trading day
+    while True:
+        if now.time() > market_open:
+            next_market_day += timedelta(days=1)
+        
+        if next_market_day.weekday() < 5 and next_market_day not in holidays:
+            break
+        
+        next_market_day += timedelta(days=1)
+    
+    # Calculate time difference
+    ist  = pytz.timezone('Asia/Kolkata')
+    open_datetime = ist.localize(dt.datetime.combine(next_market_day, market_open))
+    time_difference = open_datetime - now
+    
+    return {'status': False, 'timeToSleep': int(time_difference.total_seconds())}
+
 
 
 if __name__ == "__main__":
@@ -168,7 +240,20 @@ if __name__ == "__main__":
         while True:
             IST = pytz.timezone('Asia/Kolkata')
             now_ist = datetime.now(IST)
-            if is_market_open():
+            # get_market_status()
+            statusDict = get_market_status()
+            # statusDict['timeToSleep']
+            status = statusDict['status']
+            timeToSleep = statusDict['timeToSleep']
+
+            
+            status = True
+            timeToSleep = 60
+
+
+            # {status,timeToSleep }= 
+            print(status, timeToSleep)
+            if status:
                 
                 print(f"Market is open. Running background scanner...{now_ist}")
                 with data_lock:
@@ -181,8 +266,8 @@ if __name__ == "__main__":
                     app_state.set_latest_scan_results(intraday_results)
                 sleep(30)
             else:
-                print(f"Market is closed. Scanner is sleeping 5min. {now_ist}")
-                sleep(300)
+                print(f"Market is closed. Scanner is sleeping {timeToSleep} seconds. ")
+                sleep(timeToSleep)
 
               # Check every 5 minutes
 
