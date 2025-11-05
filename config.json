@@ -1,0 +1,10 @@
+{
+    "database": {
+        "india": "ScannerDB_india",
+        "america": "ScannerDB_america"
+    },
+    "scanner_settings": {
+        "RVOL_threshold": 2.0,
+        "beta_1_year": 1.0
+    }
+}
