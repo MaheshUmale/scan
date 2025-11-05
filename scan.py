@@ -64,62 +64,91 @@ def run_intraday_scan(settings, cookies):
     base_filters = [
         col('beta_1_year') > 1.0,
         col('is_primary') == True,
-        col('typespecs').has('common'),
-        col('type') == 'stock',
-        col('exchange').isin(settings['exchange']),
+        col('typespecs').has(['', 'common', 'foreign-issuer']),
+        col('type').isin(['dr', 'stock']),
+        # col('exchange').isin(settings['exchange']),
         col('close').between(settings['min_price'], settings['max_price']),
         col('active_symbol') == True,
         col('Value.Traded|5') > settings['min_value_traded'],
     ]
 
-    # for tf in timeframes:
-    donchian_break = [Or(
-        col(f'DonchCh20.Upper{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
-        col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}'), 
-        # col(f'close{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
-        # col(f'close{tf}') < col(f'DonchCh20.Lower[1]{tf}'),
-        # col(f'close') > col(f'DonchCh20.Upper[1]{tf}'),
-        # col(f'close') < col(f'DonchCh20.Lower[1]{tf}')
-    ) for tf in timeframes]
+    # # for tf in timeframes:
+    # donchian_break = [Or(
+    #     col(f'DonchCh20.Upper{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
+    #     col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}'), 
+        
+    # ) for tf in timeframes]
 
-    squeeze_breakout = [Or(
-        And(
-            col(f'BB.upper[1]{tf}') < col(f'KltChnl.upper[1]{tf}'),
-           Or(  col(f'BB.upper{tf}') >= col(f'KltChnl.upper{tf}'),
-                # col(f'close{tf}') > col(f'BB.upper{tf}'),
-                # col(f'close{tf}') > col(f'KltChnl.upper{tf}'),
-                # col(f'close') > col(f'BB.upper[1]{tf}'),
-                # col(f'close') > col(f'KltChnl.upper[1]{tf}')
-           )
-        ),
-        And(
-            col(f'BB.lower[1]{tf}') > col(f'KltChnl.lower[1]{tf}'),
-            Or( col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),            
-                # col(f'close{tf}') < col(f'BB.lower{tf}'),
-                # col(f'close{tf}') < col(f'KltChnl.lower{tf}'),
-                # col(f'close') < col(f'BB.lower[1]{tf}'),
-                # col(f'close') < col(f'KltChnl.lower[1]{tf}')
-            ),
-        ),
+    # squeeze_breakout = [Or(
+    #     And(
+    #         col(f'BB.upper[1]{tf}') < col(f'KltChnl.upper[1]{tf}'),
+    #        Or(  col(f'BB.upper{tf}') >= col(f'KltChnl.upper{tf}'),
+    #        )
+    #     ),
+    #     And(
+    #         col(f'BB.lower[1]{tf}') > col(f'KltChnl.lower[1]{tf}'),
+    #         Or( col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),            
+    #         ),
+    #     ),
          
         
-    )for tf in timeframes]
+    # )for tf in timeframes]
 
 
  
-    vol_spike = [And(
-        col(f'volume{tf}')> VOLUME_THRESHOLDS.get(tf,50000), 
-        # col(f'average_volume_10d_calc{tf}') > 50000,
-        Or (col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), settings['RVOL_threshold']),
+    # vol_spike = [And(
+    #     col(f'volume{tf}')> VOLUME_THRESHOLDS.get(tf,50000), 
+        
+    #     Or (col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), settings['RVOL_threshold']),
+    #         col(f'relative_volume_10d_calc{tf}') > settings['RVOL_threshold'],
+    #         col('relative_volume_intraday|5') >settings['RVOL_threshold']
+    #         ),
+        
+    # )for tf in timeframes]
+
+    compositeFilter = [
+        
+        And(
+        
+        #VOL SPIKE
+        Or ( #Any type of volume spike 
+            col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), settings['RVOL_threshold']), 
+            col(f'volume{tf}')> VOLUME_THRESHOLDS.get(tf,50000), 
             col(f'relative_volume_10d_calc{tf}') > settings['RVOL_threshold'],
             col('relative_volume_intraday|5') >settings['RVOL_threshold']
             ),
         
-    )for tf in timeframes]
+        
+        Or( #Any type of break 
+            ##BB BREAK upper
+            And(
+                col(f'BB.upper[1]{tf}') < col(f'KltChnl.upper[1]{tf}'),
+                col(f'BB.upper{tf}') >= col(f'KltChnl.upper{tf}'),
+            
+            ),
+            ##BB BREAK lower
+            And(
+                col(f'BB.lower[1]{tf}') > col(f'KltChnl.lower[1]{tf}'),
+                col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),            
+                
+            ),
+            ##DC BREAK upper
+            col(f'DonchCh20.Upper{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
+            ##DC BREAK lower
+            col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}'), 
+        
+    
+            ),
+
+
+
+        )for tf in timeframes]
+
+ 
 
    
-    filters = base_filters + [Or(*vol_spike), Or(*donchian_break, *squeeze_breakout)]
-    query = Query().select(*select_cols).where2(And(*filters)).set_markets(settings['market']).limit(1000)
+    filters = base_filters + [*compositeFilter] # + [Or(And (*vol_spike,*donchian_break), And(*vol_spike, *squeeze_breakout))]  ###+ [*compositeFilter] #
+    query = Query().select(*select_cols).where2(And(*filters)).set_markets(settings['market']).limit(1000).set_property('symbols', {'query': {}})
     
     # query.set_property('symbols', {'query': {'types': ['stock', 'fund', 'dr']}})
     
@@ -140,11 +169,12 @@ def run_intraday_scan(settings, cookies):
             
         else :
             #all_results =  pd.DataFrame() 
-            print(" NO NEW DATA  --------------- ")
+            print(" NO NEW DATA  --------------- returning empty df")
             # print(all_results)
             
             #df['timeframe'] = tf
             # all_results.append(df)
+            return {"fired": pd.DataFrame()}
     except Exception as e:
         print(f"Error in intraday scan : {e}")
         #stack strace exceprion prine exception
