@@ -7,21 +7,26 @@ from time import sleep
 import pytz
 import os
 import rookiepy
+import json
 from scan import run_intraday_scan, save_scan_results, load_scan_results
 
 app = Flask(__name__)
+
+# --- Load configuration from config.json ---
+with open('config.json', 'r') as f:
+    config = json.load(f)
 
 # --- Global state for scanner settings ---
 scanner_settings = {
     "market": "india",
     "exchange": ["NSE"],
-    # "market" : "america",
-    # "exchange": ["NASDAQ","NYSE","AMEX"],
     "min_price": 2,
     "max_price": 100000,
     "min_volume": 500000,
     "min_value_traded": 1000000,
-    "RVOL_threshold": 2.0,
+    "RVOL_threshold": config['scanner_settings']['RVOL_threshold'],
+    "beta_1_year": config['scanner_settings']['beta_1_year'],
+    "db_name": config['database']['india']
 }
 
 cookies = None
@@ -39,8 +44,8 @@ class AppState:
     # def add_fired_events(self, new_fired_events):
     #     self.all_fired_events.extend(new_fired_events)
 
-    def get_all_fired_events(self):
-        df = load_scan_results()
+    def get_all_fired_events(self, db_name):
+        df = load_scan_results(db_name)
         # The upsert logic in scan.py should prevent most duplicates, but this is a safeguard.
         df_cleaned = df.drop_duplicates(subset=['name', 'fired_timestamp'], keep='first')
 
@@ -90,7 +95,7 @@ data_lock = threading.Lock()
 def get_all_fired_events():
     """Returns all fired squeeze events for the current day."""
     with data_lock:
-        df = app_state.get_all_fired_events()
+        df = app_state.get_all_fired_events(scanner_settings['db_name'])
         
         if df.empty:
             return jsonify([])
@@ -107,22 +112,24 @@ def get_all_fired_events():
 @app.route('/update_settings', methods=['POST'])
 def update_settings():
     """Updates the global scanner settings."""
-    global scanner_settings
+    global scanner_settings, config
     new_settings = request.get_json()
     with data_lock:
         for key, value in new_settings.items():
             if key in scanner_settings:
                 try:
-                    if isinstance(scanner_settings[key], int):
-                        scanner_settings[key] = int(value)
-                    elif isinstance(scanner_settings[key], float):
+                    if key == 'market':
+                        scanner_settings['market'] = value
+                        if value == 'india':
+                            scanner_settings['db_name'] = config['database']['india']
+                            scanner_settings['exchange'] = ["NSE"]
+                        elif value == 'america':
+                            scanner_settings['db_name'] = config['database']['america']
+                            scanner_settings['exchange'] = ["NASDAQ", "NYSE", "AMEX"]
+                    elif key in ['RVOL_threshold', 'beta_1_year']:
                         scanner_settings[key] = float(value)
-                    if key == 'exchange':
-                        listExchanges = str(value).split(',')
-                        scanner_settings[key] = listExchanges
-                    elif key == 'market':
-                        listmarket = str(value).split(',')
-                        scanner_settings[key] = listmarket
+                    elif isinstance(scanner_settings[key], int):
+                        scanner_settings[key] = int(value)
                     else:
                         scanner_settings[key] = value
                 except (ValueError, TypeError):
@@ -136,7 +143,7 @@ def manual_scan():
     with data_lock:
         current_settings = scanner_settings.copy()
 
-    intraday_results = run_intraday_scan(current_settings, cookies)
+    intraday_results = run_intraday_scan(current_settings, cookies, current_settings['db_name'])
 
     with data_lock:
         app_state.set_latest_scan_results(intraday_results)
@@ -168,7 +175,7 @@ if __name__ == "__main__":
                     current_settings = scanner_settings.copy()
 
                 # Run intraday scan
-                intraday_results = run_intraday_scan(current_settings, cookies)
+                intraday_results = run_intraday_scan(current_settings, cookies, current_settings['db_name'])
 
                 with data_lock:
                     app_state.set_latest_scan_results(intraday_results)

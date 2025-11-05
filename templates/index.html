@@ -84,6 +84,7 @@
                 </div>
                 <form id="settings-form">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input type="hidden" id="market" name="market">
                         <div class="col-span-2">
                             <label class="block text-sm font-medium text-gray-300">Market Presets</label>
                             <div class="mt-2 flex items-center">
@@ -94,14 +95,6 @@
                                 </label>
                                 <span class="text-sm font-medium text-gray-400 ml-3">America</span>
                             </div>
-                        </div>
-                        <div class="col-span-2">
-                            <label for="market" class="block text-sm font-medium text-gray-300">Market</label>
-                            <textarea id="market" name="market" rows="2" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
-                        </div>
-                        <div class="col-span-2">
-                            <label for="exchange" class="block text-sm font-medium text-gray-300">Exchange (comma-separated)</label>
-                            <textarea id="exchange" name="exchange" rows="3" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
                         </div>
                         <div>
                             <label for="min_price" class="block text-sm font-medium text-gray-300">Min Price</label>
@@ -118,6 +111,14 @@
                         <div>
                             <label for="min_value_traded" class="block text-sm font-medium text-gray-300">Min Value Traded</label>
                             <input type="number" id="min_value_traded" name="min_value_traded" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="RVOL_threshold" class="block text-sm font-medium text-gray-300">RVOL Threshold</label>
+                            <input type="number" id="RVOL_threshold" name="RVOL_threshold" step="0.1" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label for="beta_1_year" class="block text-sm font-medium text-gray-300">Beta (1-year)</label>
+                            <input type="number" id="beta_1_year" name="beta_1_year" step="0.1" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                         </div>
                     </div>
                     <div class="mt-6 flex justify-end space-x-3">
@@ -526,21 +527,17 @@ const formattedTime = date.toTimeString().slice(0, 8);
         // --- Settings Modal Logic ---
 
         const marketToggle = document.getElementById('market-toggle');
-        const marketInput = document.getElementById('market');
-        const exchangeInput = document.getElementById('exchange');
         const min_value_traded = document.getElementById('min_value_traded');
         const min_volume = document.getElementById('min_volume');
 
         const marketPresets = {
             india: {
                 market: "india",
-                exchange: "NSE",
                 min_value_traded: 1000000,
                 min_volume: 50000,
             },
             america: {
                 market: "america",
-                exchange: "NASDAQ,NYSE,AMEX",
                 min_value_traded: 10000000,
                 min_volume: 10000,
             }
@@ -548,8 +545,7 @@ const formattedTime = date.toTimeString().slice(0, 8);
 
         function updateMarketFields(isAmerica) {
             const preset = isAmerica ? marketPresets.america : marketPresets.india;
-            marketInput.value = preset.market;
-            exchangeInput.value = preset.exchange;
+            settingsForm.elements['market'].value = preset.market;
             min_value_traded.value = preset.min_value_traded;
             min_volume.value = preset.min_volume;
         }

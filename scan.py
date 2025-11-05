@@ -16,7 +16,7 @@ VOLUME_THRESHOLDS = {
 }
 
 timeframes = ['|1',  '|5', '|15','|30' ,'|60','|120','|240','', '|1W','|1M']
-tf_order_map = { '|1': 1 ,  '|5': 2, '|15': 3,  '|30': 4, '|60': 5, '|120': 6,   '|240':7, '': 8, '|1W': 9 , '|1M': 10 }  
+tf_order_map = { '|1': 1 ,  '|5': 2, '|15': 3,  '|30': 4, '|60': 5, '|120': 6,   '|240':7, '': 8, '|1W': 9 , '|1M': 10 }
 tf_display_map = { '|1': '1m', '|5': '5m', '|15': '15m', '|30': '30m', '|60': '1H', '|120': '2H', '|240': '4H','': 'Daily', '|1W': 'Weekly', '|1M': 'Monthly'}
 tf_suffix_map = {v: k for k, v in tf_display_map.items()}
 
@@ -47,22 +47,22 @@ select_cols = ['name', 'logoid', 'close', 'MACD.hist','relative_volume_10d_calc'
 for tf in timeframes:
     select_cols.extend([
         f'KltChnl.lower{tf}', f'KltChnl.upper{tf}', f'BB.lower{tf}', f'BB.upper{tf}',f'DonchCh20.Upper{tf}', f'DonchCh20.Lower{tf}',
-        f'KltChnl.lower[1]{tf}', f'KltChnl.upper[1]{tf}', f'BB.lower[1]{tf}', f'BB.upper[1]{tf}',f'DonchCh20.Upper[1]{tf}', f'DonchCh20.Lower[1]{tf}',        
+        f'KltChnl.lower[1]{tf}', f'KltChnl.upper[1]{tf}', f'BB.lower[1]{tf}', f'BB.upper[1]{tf}',f'DonchCh20.Upper[1]{tf}', f'DonchCh20.Lower[1]{tf}',
         f'ATR{tf}', f'SMA20{tf}', f'volume{tf}', f'average_volume_10d_calc{tf}', f'close{tf}', f'Value.Traded{tf}'
     ])
 
 
 
-def run_intraday_scan(settings, cookies):
-   
-    
+def run_intraday_scan(settings, cookies, db_name):
+
+
     if cookies is None:
         return {"fired": pd.DataFrame()}
 
-    
-    
+
+
     base_filters = [
-        col('beta_1_year') > 1.0,
+        col('beta_1_year') > settings['beta_1_year'],
         col('is_primary') == True,
         col('typespecs').has(['', 'common', 'foreign-issuer']),
         col('type').isin(['dr', 'stock']),
@@ -75,8 +75,8 @@ def run_intraday_scan(settings, cookies):
     # # for tf in timeframes:
     # donchian_break = [Or(
     #     col(f'DonchCh20.Upper{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
-    #     col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}'), 
-        
+    #     col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}'),
+
     # ) for tf in timeframes]
 
     # squeeze_breakout = [Or(
@@ -87,71 +87,71 @@ def run_intraday_scan(settings, cookies):
     #     ),
     #     And(
     #         col(f'BB.lower[1]{tf}') > col(f'KltChnl.lower[1]{tf}'),
-    #         Or( col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),            
+    #         Or( col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),
     #         ),
     #     ),
-         
-        
+
+
     # )for tf in timeframes]
 
 
- 
+
     # vol_spike = [And(
-    #     col(f'volume{tf}')> VOLUME_THRESHOLDS.get(tf,50000), 
-        
+    #     col(f'volume{tf}')> VOLUME_THRESHOLDS.get(tf,50000),
+
     #     Or (col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), settings['RVOL_threshold']),
     #         col(f'relative_volume_10d_calc{tf}') > settings['RVOL_threshold'],
     #         col('relative_volume_intraday|5') >settings['RVOL_threshold']
     #         ),
-        
+
     # )for tf in timeframes]
 
     compositeFilter = [
-        
+
         And(
-        
+
         #VOL SPIKE
-        Or ( #Any type of volume spike 
-            col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), settings['RVOL_threshold']), 
-            col(f'volume{tf}')> VOLUME_THRESHOLDS.get(tf,50000), 
+        Or ( #Any type of volume spike
+            col(f'volume{tf}').above_pct(col(f'average_volume_10d_calc{tf}'), settings['RVOL_threshold']),
+            col(f'volume{tf}')> VOLUME_THRESHOLDS.get(tf,50000),
             col(f'relative_volume_10d_calc{tf}') > settings['RVOL_threshold'],
             col('relative_volume_intraday|5') >settings['RVOL_threshold']
             ),
-        
-        
-        Or( #Any type of break 
+
+
+        Or( #Any type of break
             ##BB BREAK upper
             And(
                 col(f'BB.upper[1]{tf}') < col(f'KltChnl.upper[1]{tf}'),
                 col(f'BB.upper{tf}') >= col(f'KltChnl.upper{tf}'),
-            
+
             ),
             ##BB BREAK lower
             And(
                 col(f'BB.lower[1]{tf}') > col(f'KltChnl.lower[1]{tf}'),
-                col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),            
-                
+                col(f'BB.lower{tf}') <= col(f'KltChnl.lower[1]{tf}'),
+
             ),
             ##DC BREAK upper
             col(f'DonchCh20.Upper{tf}') > col(f'DonchCh20.Upper[1]{tf}'),
             ##DC BREAK lower
-            col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}'), 
-        
-    
+            col(f'DonchCh20.Lower{tf}') < col(f'DonchCh20.Lower[1]{tf}'),
+
+
             ),
 
 
 
         )for tf in timeframes]
 
- 
 
-   
+
+
     filters = base_filters + [*compositeFilter] # + [Or(And (*vol_spike,*donchian_break), And(*vol_spike, *squeeze_breakout))]  ###+ [*compositeFilter] #
     query = Query().select(*select_cols).where2(And(*filters)).set_markets(settings['market']).limit(1000).set_property('symbols', {'query': {}})
-    
+
     # query.set_property('symbols', {'query': {'types': ['stock', 'fund', 'dr']}})
-    
+
     try:
         # print(f"Running intraday scan for timeframe: {tf or '1D'}")
         _, df = query.get_scanner_data(cookies=cookies)
@@ -159,19 +159,19 @@ def run_intraday_scan(settings, cookies):
             df = df.fillna(value=pd.NA).replace({pd.NA: None})
             # ROBUST CONVERSION: Convert pandas NaN, numpy NaN, and Inf to Python None
             df = df.replace([float('inf'), float('-inf')], None).where(pd.notnull(df), None)
-        print(f"Scan completed  size: {len(df)}") 
-        
+        print(f"Scan completed  size: {len(df)}")
+
 
         if df is not None and not df.empty:
             df = identify_combined_breakout_timeframes(df, timeframes)
             df = calculate_potency_score(df, tf_order_map)
             # all_results = pd.concat( [all_results ,df])
-            
+
         else :
-            #all_results =  pd.DataFrame() 
+            #all_results =  pd.DataFrame()
             print(" NO NEW DATA  --------------- returning empty df")
             # print(all_results)
-            
+
             #df['timeframe'] = tf
             # all_results.append(df)
             return {"fired": pd.DataFrame()}
@@ -180,7 +180,7 @@ def run_intraday_scan(settings, cookies):
         #stack strace exceprion prine exception
         import traceback
         traceback.print_exc()
-     
+
 
 
     # if  all_results is  None or  all_results.empty :
@@ -194,12 +194,12 @@ def run_intraday_scan(settings, cookies):
     df_New = df_New[df_New['breakout_type'] != 'None'].copy()
     if df_New.empty:
         print(f"===========NO NEW BREAKOUT =================================")
-    
+
         return {"fired": pd.DataFrame()}
     # else :
     #     print(f"==================> NEW BREAKOUT HAPPENING ----------------------------->    df_New size: {len(df_New)}")
-    
-        
+
+
     df_New['fired_timestamp'] = pd.Timestamp.now()
     df_New['count'] = 1
     df_New['previous_volatility'] = 0
@@ -212,7 +212,7 @@ def run_intraday_scan(settings, cookies):
 
     # Filter the DataFrame to include only the columns needed by the UI
     df_filtered = df_New[[col for col in UI_COLUMNS if col in df_New.columns]].copy()
-    save_scan_results(df_filtered)
+    save_scan_results(df_filtered, db_name)
     return {"fired": df_filtered}
 
 import pandas as pd
@@ -304,7 +304,7 @@ def calculate_potency_score(df: pd.DataFrame, tf_order_map: dict) -> pd.DataFram
     if df.empty:
         return df
 
- 
+
     ##for every row sum all columns ratio df[f'volume{tf}']/ df[f'average_volume_10d_calc{tf}'] in volumeScore
     df['volume_score'] = 0.0
     for tf in timeframes:
@@ -312,7 +312,7 @@ def calculate_potency_score(df: pd.DataFrame, tf_order_map: dict) -> pd.DataFram
         if f'volume{tf}' in df.columns and f'average_volume_10d_calc{tf}' in df.columns:
             # Replace 0 in average_volume_10d_calc to avoid division by zero
             safe_avg_vol = df[f'average_volume_10d_calc{tf}'].replace(0, 1)
-            df['volume_score'] += (df[f'volume{tf}'] / safe_avg_vol)*tf_order_map.get(tf, 0) 
+            df['volume_score'] += (df[f'volume{tf}'] / safe_avg_vol)*tf_order_map.get(tf, 0)
         else:
             print(f"Warning: Missing volume data for timeframe {tf}. Skipping volume score calculation for this TF.")
 
@@ -321,7 +321,7 @@ def calculate_potency_score(df: pd.DataFrame, tf_order_map: dict) -> pd.DataFram
     # Normalize volume_score if needed, or use it directly
     # For now, let's use it directly as a sum
     df['RVOL_Score'] = df['volume_score'] / len(timeframes) # Average RVOL across all TFs
-    
+
     # 1. Breakout Type Score
     # Map the breakout type to a score, defaulting to 0
     df['Breakout_Type_Score'] = df['breakout_type'].map(BREAKOUT_TYPE_SCORES).fillna(0)
@@ -342,7 +342,7 @@ def calculate_potency_score(df: pd.DataFrame, tf_order_map: dict) -> pd.DataFram
         (df['relative_volume_10d_calc'] * POTENCY_WEIGHTS['RVOL']) +
         (df['TF_Order'] * POTENCY_WEIGHTS['TF_Order']) +
         (df['Breakout_Type_Score'] * POTENCY_WEIGHTS['Breakout_Type_Score']) +
-        (df['RVOL_Score'] * 0.5) 
+        (df['RVOL_Score'] * 0.5)
     )
 
     # Sort by Potency Score, descending
@@ -364,12 +364,12 @@ MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/')
 DB_NAME = "ScannerDB"
 COLLECTION_NAME = "scan_results"
 
-def get_mongo_collection():
+def get_mongo_collection(db_name):
     client = MongoClient(MONGO_URI)
-    db = client[DB_NAME]
+    db = client[db_name]
     return db[COLLECTION_NAME]
 
-def save_scan_results(df: pd.DataFrame):
+def save_scan_results(df: pd.DataFrame, db_name: str):
     """Saves the DataFrame to MongoDB using an upsert mechanism to avoid duplicates."""
     if df.empty:
         print("No data to save to MongoDB.")
@@ -379,9 +379,9 @@ def save_scan_results(df: pd.DataFrame):
     # Ensure only existing columns are selected
     df_ui = df[[col for col in UI_COLUMNS if col in df.columns]].copy()
 
-    collection = get_mongo_collection()
+    collection = get_mongo_collection(db_name)
     records = df_ui.to_dict(orient='records')
-    
+
     upsert_count = 0
     modified_count = 0
 
@@ -414,30 +414,28 @@ def save_scan_results(df: pd.DataFrame):
 
     print(f"Upserted {upsert_count} and modified {modified_count} records in MongoDB.")
 
-def load_scan_results() -> pd.DataFrame:
+def load_scan_results(db_name: str) -> pd.DataFrame:
     """Loads scan results from MongoDB."""
-    collection = get_mongo_collection()
-    
+    collection = get_mongo_collection(db_name)
+
     # Retrieve all documents from the collection
     records = list(collection.find({}))
-    
+
     if not records:
         print("No previous scan results found in MongoDB.")
         return pd.DataFrame()
-    
+
     # Convert list of dictionaries back to DataFrame
     df = pd.DataFrame(records)
-    
+
     # Drop the MongoDB '_id' column if it exists
     if '_id' in df.columns:
         df = df.drop(columns=['_id'])
-    
+
     # print(f"===============================================================================Loaded {len(df)} records from MongoDB.")
-    
+
     # Sort by the new Potency_Score before returning
     if 'Potency_Score' in df.columns:
          df = df.sort_values(by='Potency_Score', ascending=False)
-         
+
     return df
-    
- 
