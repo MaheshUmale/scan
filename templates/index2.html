@@ -162,6 +162,7 @@
         let allFiredRefreshInterval;
         let isAllFiredLoaded = false;
         let latestData = { fired: [] };
+        let allFiredData = [];
         const margin = {top: 30, right: 10, bottom: 10, left: 5};
         const width = Math.max(800, window.innerWidth * 0.9 - margin.left - margin.right);
         const height = 600 - margin.top - margin.bottom;
@@ -285,8 +286,8 @@
                 try {
                     fetch('/get_all_fired_events').then(response => response.text()).then(rawText => {
                         const sanitizedText = rawText.replace(/NaN/g, 'null').replace(/-Infinity/g, 'null').replace(/Infinity/g, 'null');
-                        const data = JSON.parse(sanitizedText);
-                        renderAllFiredList(data);
+                        allFiredData = JSON.parse(sanitizedText);
+                        applyAllFiredFilters();
                         isAllFiredLoaded = true;
                     });
                 } catch (error) {
@@ -364,6 +365,7 @@
             rvolFilter.addEventListener('input', () => {
                 rvolValue.textContent = rvolFilter.value;
                 applyFilters();
+                applyAllFiredFilters();
             });
             tfOrder.forEach(tf => {
                 const label = document.createElement('label');
@@ -372,12 +374,16 @@
                 checkbox.type = 'checkbox';
                 checkbox.value = tf;
                 checkbox.className = "form-checkbox h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded";
-                checkbox.addEventListener('change', applyFilters);
+                checkbox.addEventListener('change', () => {
+                    applyFilters();
+                    applyAllFiredFilters();
+                });
                 label.appendChild(checkbox);
                 label.appendChild(document.createTextNode(tf));
                 timeframeFilters.appendChild(label);
             });
         }
+
         function applyFilters() {
             const rvol = parseFloat(rvolFilter.value);
             const selectedTimeframes = Array.from(timeframeFilters.querySelectorAll('input:checked')).map(el => el.value);
@@ -388,6 +394,18 @@
             });
             renderFired(filteredData);
         }
+
+        function applyAllFiredFilters() {
+            const rvol = parseFloat(rvolFilter.value);
+            const selectedTimeframes = Array.from(timeframeFilters.querySelectorAll('input:checked')).map(el => el.value);
+            const filteredData = allFiredData.filter(d => {
+                const rvolMatch = d.relative_volume_10d_calc >= rvol;
+                const timeframeMatch = selectedTimeframes.length === 0 || selectedTimeframes.includes(d.highest_tf);
+                return rvolMatch && timeframeMatch;
+            });
+            renderAllFiredList(filteredData);
+        }
+
         function updateDashboard(data, source = 'auto-refresh') {
             latestData = data;
             applyFilters();
@@ -395,6 +413,7 @@
             if (source === 'manual') scanStatus.textContent = `Manual refresh complete at ${timestamp}.`;
             else scanStatus.textContent = `Last updated: ${timestamp}`;
         }
+
         function showSettingsModal() { settingsModal.classList.remove('hidden'); }
         function hideSettingsModal() { settingsModal.classList.add('hidden'); }
         function loadSettings() {
