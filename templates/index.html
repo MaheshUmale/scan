@@ -165,6 +165,7 @@
         let allFiredRefreshInterval;
         let isAllFiredLoaded = false;
         let latestData = { fired: [] };
+        let allFiredData = [];
         
         const tfOrder = ['1m', '3m', '5m', '15m', '30m', '1H', '2H', '4H', 'Daily', 'Weekly', 'Monthly'];
 
@@ -318,6 +319,17 @@
             renderFired(filteredData);
         }
 
+        function applyAllFiredFilters() {
+            const rvol = parseFloat(rvolFilter.value);
+            const selectedTimeframes = Array.from(timeframeFilters.querySelectorAll('input:checked')).map(el => el.value);
+            const filteredData = allFiredData.filter(d => {
+                const rvolMatch = d.relative_volume_10d_calc >= rvol;
+                const timeframeMatch = selectedTimeframes.length === 0 || selectedTimeframes.includes(d.highest_tf);
+                return rvolMatch && timeframeMatch;
+            });
+            renderAllFiredList(filteredData);
+        }
+
         function setupControls() {
             d3.selectAll('.section-title').on('click', function() {
                 const titleEl = d3.select(this);
@@ -340,6 +352,7 @@
             rvolFilter.addEventListener('input', () => {
                 rvolValue.textContent = rvolFilter.value;
                 applyFilters();
+                applyAllFiredFilters();
             });
 
             tfOrder.forEach(tf => {
@@ -349,7 +362,10 @@
                 checkbox.type = 'checkbox';
                 checkbox.value = tf;
                 checkbox.className = "form-checkbox h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded";
-                checkbox.addEventListener('change', applyFilters);
+                checkbox.addEventListener('change', () => {
+                    applyFilters();
+                    applyAllFiredFilters();
+                });
                 label.appendChild(checkbox);
                 label.appendChild(document.createTextNode(tf));
                 timeframeFilters.appendChild(label);
@@ -397,8 +413,8 @@
                     if (!response.ok) throw new Error('Failed to fetch');
                     const rawText = await response.text();
                     const sanitizedText = rawText.replace(/NaN/g, 'null').replace(/-Infinity/g, 'null').replace(/Infinity/g, 'null');
-                    const data = JSON.parse(sanitizedText);
-                    renderAllFiredList(data);
+                    allFiredData = JSON.parse(sanitizedText);
+                    applyAllFiredFilters();
                     isAllFiredLoaded = true;
                 } catch (error) {
                     allFiredContainer.html('<p class="col-span-full text-red-500 text-center">Error loading data.</p>');

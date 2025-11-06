@@ -147,7 +147,7 @@ def manual_scan():
 import datetime as dt
 from datetime import timedelta
 
-def get_market_status():
+def get_market_status_india():
     """Check the Indian stock market status and calculate time to sleep."""
     market_open = dt.time(9, 15)
     market_close = dt.time(15, 30)
@@ -160,13 +160,31 @@ def get_market_status():
     ist = pytz.timezone('Asia/Kolkata')
     now = dt.datetime.now(ist)
     if now.date() in holidays or now.weekday() >= 5:
-        return calculate_time_to_open(now, market_open, holidays)
+        return calculate_time_to_open(now, market_open, holidays, ist)
     if market_open <= now.time() <= market_close:
         return {'status': True, 'timeToSleep': 60}
     else:
-        return calculate_time_to_open(now, market_open, holidays)
+        return calculate_time_to_open(now, market_open, holidays, ist)
 
-def calculate_time_to_open(now, market_open, holidays):
+def get_market_status_america():
+    """Check the American stock market status and calculate time to sleep."""
+    market_open = dt.time(9, 30)
+    market_close = dt.time(16, 0)
+    holidays = [
+        dt.date(2025, 1, 1), dt.date(2025, 1, 20), dt.date(2025, 2, 17),
+        dt.date(2025, 4, 18), dt.date(2025, 5, 26), dt.date(2025, 7, 4),
+        dt.date(2025, 9, 1), dt.date(2025, 11, 27), dt.date(2025, 12, 25)
+    ]
+    est = pytz.timezone('US/Eastern')
+    now = dt.datetime.now(est)
+    if now.date() in holidays or now.weekday() >= 5:
+        return calculate_time_to_open(now, market_open, holidays, est)
+    if market_open <= now.time() <= market_close:
+        return {'status': True, 'timeToSleep': 60}
+    else:
+        return calculate_time_to_open(now, market_open, holidays, est)
+
+def calculate_time_to_open(now, market_open, holidays, tz):
     """Calculate the time to the next market open."""
     next_market_day = now.date()
     while True:
@@ -175,17 +193,21 @@ def calculate_time_to_open(now, market_open, holidays):
         if next_market_day.weekday() < 5 and next_market_day not in holidays:
             break
         next_market_day += timedelta(days=1)
-    ist = pytz.timezone('Asia/Kolkata')
-    open_datetime = ist.localize(dt.datetime.combine(next_market_day, market_open))
+    open_datetime = tz.localize(dt.datetime.combine(next_market_day, market_open))
     time_difference = open_datetime - now
     return {'status': False, 'timeToSleep': int(time_difference.total_seconds())}
 
 def background_scanner():
     """Run scans in the background."""
     while True:
-        statusDict = get_market_status()
+        if scanner_settings['market'] == 'india':
+            statusDict = get_market_status_india()
+        else:
+            statusDict = get_market_status_america()
+
         status = statusDict['status']
         timeToSleep = statusDict['timeToSleep']
+
         if status:
             print(f"Market is open. Running background scanner...{datetime.now(pytz.timezone('Asia/Kolkata'))}")
             with data_lock:
